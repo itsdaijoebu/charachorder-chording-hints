@@ -15,8 +15,8 @@
   let currentDictionary = null;
   let inputDisplayOverrides = {};
   let currentSort = { key: "index", direction: "asc" };
-  let editingEntryIndex = null;
-  let editingSegmentTexts = [];
+  let expandedEditorRows = new Set();
+  let draftInputEdits = {};
 
   const els = {
     jsonFile: document.getElementById("jsonFile"),
@@ -332,54 +332,92 @@
     });
   }
 
+  function effectiveEntrySegments(entryIndex) {
+    const effectiveEntry = entryByIndex(currentDictionary, entryIndex);
+    return effectiveEntry ? CCHShared.entryEditableInputSegments(effectiveEntry).map((value) => String(value ?? "")) : [];
+  }
+
+  function baseEntrySegments(entryIndex) {
+    const baseEntry = entryByIndex(currentRawDictionary, entryIndex);
+    return baseEntry ? CCHShared.entryEditableInputSegments(baseEntry).map((value) => String(value ?? "")) : [];
+  }
+
+  function hasSavedOverrideForEntry(entryIndex) {
+    return Array.isArray(inputDisplayOverrides[String(entryIndex)]);
+  }
+
+  function hasDraftForEntry(entryIndex) {
+    return Array.isArray(draftInputEdits[String(entryIndex)]);
+  }
+
+  function currentDraftSegments(entryIndex) {
+    if (hasDraftForEntry(entryIndex)) {
+      return draftInputEdits[String(entryIndex)].map((value) => String(value ?? ""));
+    }
+    return effectiveEntrySegments(entryIndex);
+  }
+
+  function draftIsDirty(entryIndex) {
+    if (!hasDraftForEntry(entryIndex)) return false;
+    const draft = currentDraftSegments(entryIndex);
+    const effective = effectiveEntrySegments(entryIndex);
+    if (draft.length !== effective.length) return true;
+    return draft.some((value, index) => value !== String(effective[index] ?? ""));
+  }
+
+  function dirtyDraftEntryIndices() {
+    return Object.keys(draftInputEdits)
+      .map((value) => Number(value))
+      .filter((entryIndex) => Number.isFinite(entryIndex) && draftIsDirty(entryIndex));
+  }
+
+  function isRowExpanded(entryIndex) {
+    return expandedEditorRows.has(entryIndex) || hasDraftForEntry(entryIndex);
+  }
+
   function startEditingEntry(entryIndex) {
     const effectiveEntry = entryByIndex(currentDictionary, entryIndex);
     if (!effectiveEntry) return;
 
-    editingEntryIndex = entryIndex;
-    editingSegmentTexts = CCHShared.entryEditableInputSegments(effectiveEntry);
+    expandedEditorRows.add(entryIndex);
+    if (!hasDraftForEntry(entryIndex)) {
+      draftInputEdits[String(entryIndex)] = CCHShared.entryEditableInputSegments(effectiveEntry).map((value) => String(value ?? ""));
+    }
     renderLoadedChords(currentSettingsFromForm());
   }
 
-  function updateEditingSegment(segmentIndex, value) {
-    if (editingEntryIndex === null) return;
-    editingSegmentTexts[segmentIndex] = value;
+  function collapseEditingEntry(entryIndex) {
+    expandedEditorRows.delete(entryIndex);
+    if (hasDraftForEntry(entryIndex) && !draftIsDirty(entryIndex)) {
+      delete draftInputEdits[String(entryIndex)];
+    }
+    renderLoadedChords(currentSettingsFromForm());
+  }
+
+  function updateEditingSegment(entryIndex, segmentIndex, value) {
+    if (!hasDraftForEntry(entryIndex)) {
+      draftInputEdits[String(entryIndex)] = effectiveEntrySegments(entryIndex);
+    }
+    draftInputEdits[String(entryIndex)][segmentIndex] = value;
     updateEditingControls();
   }
 
-  function editingEntryBaseSegments() {
-    const baseEntry = entryByIndex(currentRawDictionary, editingEntryIndex);
-    return baseEntry ? CCHShared.entryEditableInputSegments(baseEntry) : [];
-  }
-
-  function editingHasSavedOverride() {
-    return editingEntryIndex !== null && Array.isArray(inputDisplayOverrides[String(editingEntryIndex)]);
-  }
-
-  function editingIsDirty() {
-    if (editingEntryIndex === null) return false;
-    const currentTexts = editingSegmentTexts.map((value) => String(value ?? ""));
-    const effectiveEntry = entryByIndex(currentDictionary, editingEntryIndex);
-    const effectiveTexts = effectiveEntry ? CCHShared.entryEditableInputSegments(effectiveEntry) : [];
-    if (currentTexts.length !== effectiveTexts.length) return true;
-    return currentTexts.some((value, index) => value !== String(effectiveTexts[index] ?? ""));
-  }
-
   function updateEditingControls() {
-    const isEditing = editingEntryIndex !== null;
-    const dirty = editingIsDirty();
-    const hasSavedOverride = editingHasSavedOverride();
+    const dirtyIndices = dirtyDraftEntryIndices();
+    const dirtyCount = dirtyIndices.length;
+    const expandedCount = expandedEditorRows.size;
 
-    els.saveInputOverrideButton.disabled = !isEditing || !dirty;
-    els.revertInputOverrideButton.disabled = !isEditing || (!dirty && !hasSavedOverride);
+    els.saveInputOverrideButton.disabled = dirtyCount === 0;
+    els.revertInputOverrideButton.disabled = dirtyCount === 0;
 
-    if (!isEditing) {
-      els.editingStatus.textContent = "Click an input to edit it.";
+    if (!expandedCount && !dirtyCount) {
+      els.editingStatus.textContent = "Click any input to edit multiple rows before saving.";
       return;
     }
 
-    const suffix = dirty ? " (unsaved)" : (hasSavedOverride ? " (saved override)" : "");
-    els.editingStatus.textContent = `Editing entry ${editingEntryIndex}${suffix}`;
+    const expandedText = expandedCount ? `${expandedCount} row${expandedCount === 1 ? "" : "s"} open` : "";
+    const dirtyText = dirtyCount ? `${dirtyCount} unsaved edit${dirtyCount === 1 ? "" : "s"}` : "no unsaved edits";
+    els.editingStatus.textContent = [expandedText, dirtyText].filter(Boolean).join(" · ");
   }
 
   function sortedEntriesForPreview() {
@@ -397,9 +435,7 @@
     const wrapper = document.createElement("div");
     wrapper.className = "editableInputSegments";
 
-    const segmentTexts = editingEntryIndex === entry.index
-      ? editingSegmentTexts
-      : CCHShared.entryEditableInputSegments(entry);
+    const segmentTexts = currentDraftSegments(entry.index);
 
     segmentTexts.forEach((segmentText, segmentIndex) => {
       if (segmentIndex > 0) {
@@ -412,11 +448,32 @@
       input.value = segmentText || "";
       input.placeholder = segmentIndex === 0 && entry.flags.hasUnknownCompoundSegment ? "unknown segment" : "segment";
       input.addEventListener("input", (event) => {
-        updateEditingSegment(segmentIndex, event.target.value);
+        updateEditingSegment(entry.index, segmentIndex, event.target.value);
       });
       wrapper.appendChild(input);
     });
 
+    const actions = document.createElement("div");
+    actions.className = "rowEditActions";
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "miniButton";
+    closeButton.textContent = "Close";
+    closeButton.addEventListener("click", () => collapseEditingEntry(entry.index));
+    actions.appendChild(closeButton);
+
+    const resetButton = document.createElement("button");
+    resetButton.type = "button";
+    resetButton.className = "miniButton secondary";
+    resetButton.textContent = "Reset row";
+    resetButton.disabled = !hasSavedOverrideForEntry(entry.index) && !draftIsDirty(entry.index);
+    resetButton.addEventListener("click", () => {
+      resetSingleRow(entry.index);
+    });
+    actions.appendChild(resetButton);
+
+    wrapper.appendChild(actions);
     return wrapper;
   }
 
@@ -451,14 +508,17 @@
 
     for (const entry of pageEntries) {
       const tr = document.createElement("tr");
-      if (editingEntryIndex === entry.index) {
+      if (isRowExpanded(entry.index)) {
         tr.classList.add("editingRow");
+      }
+      if (draftIsDirty(entry.index)) {
+        tr.classList.add("dirtyRow");
       }
 
       const tdInput = document.createElement("td");
       tdInput.className = "inputCell";
 
-      if (editingEntryIndex === entry.index) {
+      if (isRowExpanded(entry.index)) {
         tdInput.appendChild(renderEditableInput(entry, settings));
       } else {
         const button = document.createElement("button");
@@ -1069,8 +1129,8 @@
     });
     currentRawDictionary = hydrateDictionary(parsedDictionary);
     inputDisplayOverrides = {};
-    editingEntryIndex = null;
-    editingSegmentTexts = [];
+    expandedEditorRows = new Set();
+    draftInputEdits = {};
     currentPage = 1;
     applyCurrentDictionary();
     refreshMeta(currentDictionary);
@@ -1142,8 +1202,8 @@
       currentRawDictionary = null;
       currentDictionary = null;
       inputDisplayOverrides = {};
-      editingEntryIndex = null;
-      editingSegmentTexts = [];
+      expandedEditorRows = new Set();
+      draftInputEdits = {};
       currentPage = 1;
       refreshMeta(null);
       renderLoadedChords(currentSettingsFromForm());
@@ -1153,46 +1213,54 @@
     }
   }
 
+  async function resetSingleRow(entryIndex) {
+    const nextOverrides = { ...(inputDisplayOverrides || {}) };
+    delete nextOverrides[String(entryIndex)];
+    inputDisplayOverrides = nextOverrides;
+    delete draftInputEdits[String(entryIndex)];
+    expandedEditorRows.delete(entryIndex);
+    await setStorage({ [STORAGE_KEYS.inputDisplayOverrides]: inputDisplayOverrides });
+    applyCurrentDictionary();
+    renderLoadedChords(currentSettingsFromForm());
+    setStatus(els.importStatus, `Reset entry ${entryIndex} to the parsed device view.`);
+  }
+
   async function saveEditedInputOverride() {
-    if (editingEntryIndex === null) return;
+    const dirtyIndices = dirtyDraftEntryIndices();
+    if (!dirtyIndices.length) return;
 
-    const baseEntry = entryByIndex(currentRawDictionary, editingEntryIndex);
-    if (!baseEntry) return;
-
-    const normalizedTexts = editingSegmentTexts.map((value) => String(value ?? ""));
-    const baseTexts = CCHShared.entryEditableInputSegments(baseEntry).map((value) => String(value ?? ""));
     const nextOverrides = { ...(inputDisplayOverrides || {}) };
 
-    const matchesBase = normalizedTexts.length === baseTexts.length
-      && normalizedTexts.every((value, index) => value === baseTexts[index]);
+    dirtyIndices.forEach((entryIndex) => {
+      const baseTexts = baseEntrySegments(entryIndex);
+      const draftTexts = currentDraftSegments(entryIndex).map((value) => String(value ?? ""));
+      const matchesBase = draftTexts.length === baseTexts.length
+        && draftTexts.every((value, index) => value === baseTexts[index]);
 
-    if (matchesBase) {
-      delete nextOverrides[String(editingEntryIndex)];
-    } else {
-      nextOverrides[String(editingEntryIndex)] = normalizedTexts;
-    }
+      if (matchesBase) {
+        delete nextOverrides[String(entryIndex)];
+      } else {
+        nextOverrides[String(entryIndex)] = draftTexts;
+      }
+    });
 
     inputDisplayOverrides = nextOverrides;
     await setStorage({ [STORAGE_KEYS.inputDisplayOverrides]: inputDisplayOverrides });
     applyCurrentDictionary();
-    editingSegmentTexts = CCHShared.entryEditableInputSegments(entryByIndex(currentDictionary, editingEntryIndex) || baseEntry);
+    draftInputEdits = {};
+    expandedEditorRows = new Set();
     renderLoadedChords(currentSettingsFromForm());
-    setStatus(els.importStatus, `Saved display override for entry ${editingEntryIndex}.`);
+    setStatus(els.importStatus, `Saved ${dirtyIndices.length} edited input${dirtyIndices.length === 1 ? "" : "s"}.`);
   }
 
   async function revertEditedInputOverride() {
-    if (editingEntryIndex === null) return;
+    const dirtyCount = dirtyDraftEntryIndices().length;
+    if (!dirtyCount) return;
 
-    const nextOverrides = { ...(inputDisplayOverrides || {}) };
-    delete nextOverrides[String(editingEntryIndex)];
-    inputDisplayOverrides = nextOverrides;
-    await setStorage({ [STORAGE_KEYS.inputDisplayOverrides]: inputDisplayOverrides });
-    applyCurrentDictionary();
-
-    const baseEntry = entryByIndex(currentRawDictionary, editingEntryIndex);
-    editingSegmentTexts = baseEntry ? CCHShared.entryEditableInputSegments(baseEntry) : [];
+    draftInputEdits = {};
+    expandedEditorRows = new Set();
     renderLoadedChords(currentSettingsFromForm());
-    setStatus(els.importStatus, `Reverted entry ${editingEntryIndex} to the parsed device view.`);
+    setStatus(els.importStatus, `Discarded ${dirtyCount} unsaved edit${dirtyCount === 1 ? "" : "s"}.`);
   }
 
   async function saveSettings() {
