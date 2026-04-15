@@ -254,7 +254,14 @@ summary {
 }
 
 .tokenChar,
-.tokenUnknown { display: inline-block; }
+.tokenUnknown,
+.tokenSeparator { display: inline-block; }
+
+.tokenSeparator {
+  font-weight: 700;
+  opacity: 0.8;
+  letter-spacing: 0.02em;
+}
 
 .tokenSpecial {
   position: relative;
@@ -334,4 +341,89 @@ button:disabled {
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: lowercase;
+}
+
+.fieldLabel {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+
+.fieldLabel > span,
+.pageJumpLabel > span {
+  font-weight: 600;
+}
+
+.compactFields {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.previewToolbar {
+  justify-content: flex-start;
+}
+
+.sortButton {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font: inherit;
+  font-weight: 700;
+}
+
+.sortButton:hover {
+  filter: none;
+  text-decoration: underline;
+}
+
+.pageJumpLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pageJumpLabel input {
+  width: 88px;
+}
+
+.inputPreviewButton {
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  border: 1px solid transparent;
+  padding: 0;
+  border-radius: 10px;
+  width: 100%;
+  text-align: left;
+}
+
+.inputPreviewButton:hover {
+  filter: none;
+  border-color: #c9d3e1;
+  background: #f8fafc;
+}
+
+.inputCell {
+  min-width: 260px;
+}
+
+.editableInputSegments {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.segmentEditInput {
+  min-width: 88px;
+  width: auto;
+}
+
+.editingRow {
+  background: #f8fafc;
+}
+
+.tokenSeparator.tokenSpecial {
+  width: 1.2em;
+  opacity: 0.9;
 }

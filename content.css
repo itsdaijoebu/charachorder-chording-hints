@@ -8,16 +8,16 @@
   --cch-label-padding-x: 0.3em;
   --cch-label-radius: 0.35em;
   --cch-label-max-width: 24ch;
-  
+
   --cch-hint-box-dark-mode-color: rgba(148, 158, 197, 0.92); 
   --cch-hint-text-dark-mode-color: #15161e;
   --cch-hint-box-light-mode-color: rgba(52, 59, 88, 0.96);
   --cch-hint-text-light-mode-color: #d0d1d7;
-  
+
   /*fallback defaults*/
   --cch-label-bg: var(--cch-hint-box-dark-mode-color);
   --cch-label-color: var(--cch-hint-text-dark-mode-color);
-  
+
   --cch-label-border: rgba(107, 114, 128, 0.25);
 
   --cch-icon-size: 1em;
@@ -73,8 +73,15 @@ body.light {
 }
 
 .cch-token-char,
-.cch-token-unknown {
+.cch-token-unknown,
+.cch-token-separator {
   display: inline-block;
+}
+
+.cch-token-separator {
+  font-weight: 700;
+  opacity: 0.8;
+  letter-spacing: 0.02em;
 }
 
 .cch-token-special {
@@ -128,4 +135,9 @@ body.light {
 
 .cch-debug-parent {
   /*outline: 1px dashed rgba(59, 130, 246, 0.5) !important;*/
+}
+
+.cch-token-separator.cch-token-special {
+  width: 1.2em;
+  opacity: 0.9;
 }

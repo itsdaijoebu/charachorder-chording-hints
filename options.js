@@ -1,6 +1,7 @@
 (() => {
   const STORAGE_KEYS = {
     parsedDictionary: "parsedDictionary",
+    inputDisplayOverrides: "inputDisplayOverrides",
     settings: "settings"
   };
 
@@ -10,7 +11,12 @@
   const SERIAL_ENTRY_TIMEOUT_MS = 2000;
 
   let currentPage = 1;
+  let currentRawDictionary = null;
   let currentDictionary = null;
+  let inputDisplayOverrides = {};
+  let currentSort = { key: "index", direction: "asc" };
+  let editingEntryIndex = null;
+  let editingSegmentTexts = [];
 
   const els = {
     jsonFile: document.getElementById("jsonFile"),
@@ -60,8 +66,16 @@
     loadedChordsPanel: document.getElementById("loadedChordsPanel"),
     loadedSourceBadge: document.getElementById("loadedSourceBadge"),
     loadedChordsTableBody: document.getElementById("loadedChordsTableBody"),
+    saveInputOverrideButton: document.getElementById("saveInputOverrideButton"),
+    revertInputOverrideButton: document.getElementById("revertInputOverrideButton"),
+    editingStatus: document.getElementById("editingStatus"),
+    sortInputButton: document.getElementById("sortInputButton"),
+    sortOutputButton: document.getElementById("sortOutputButton"),
+    sortUnknownCompoundButton: document.getElementById("sortUnknownCompoundButton"),
     prevPageButton: document.getElementById("prevPageButton"),
     nextPageButton: document.getElementById("nextPageButton"),
+    pageJumpInput: document.getElementById("pageJumpInput"),
+    pageJumpButton: document.getElementById("pageJumpButton"),
     pageStatus: document.getElementById("pageStatus")
   };
 
@@ -100,6 +114,10 @@
     els.syncDeviceButton.disabled = isBusy;
     els.clearButton.disabled = isBusy;
     els.saveSettingsButton.disabled = isBusy;
+    if (els.saveInputOverrideButton) els.saveInputOverrideButton.disabled = isBusy || els.saveInputOverrideButton.disabled;
+    if (els.revertInputOverrideButton) els.revertInputOverrideButton.disabled = isBusy || els.revertInputOverrideButton.disabled;
+    if (els.pageJumpButton) els.pageJumpButton.disabled = isBusy;
+    if (els.pageJumpInput) els.pageJumpInput.disabled = isBusy;
   }
 
   function setStatus(target, text, isError = false) {
@@ -158,12 +176,12 @@
     els.metaSavedAt.textContent = parsedDictionary?.savedAt ? formatDate(parsedDictionary.savedAt) : "—";
   }
 
-  function flagSummary(entry) {
-    const flags = [];
-    if (entry.flags.hasArpeggiate) flags.push("arpeggiate");
-    if (entry.flags.hasModifierLikeOutput) flags.push("modifier-output");
-    if (!flags.length) flags.push("—");
-    return flags.join(", ");
+  function applyCurrentDictionary() {
+    currentDictionary = CCHShared.applyInputDisplayOverrides(currentRawDictionary, inputDisplayOverrides);
+  }
+
+  function entryByIndex(dictionary, entryIndex) {
+    return dictionary?.entries?.find((entry) => entry.index === entryIndex) ?? null;
   }
 
   function isLeftVariant(tokenKey) {
@@ -225,6 +243,16 @@
     return span;
   }
 
+  function renderSegmentSeparator(settings) {
+    const separator = renderToken(
+      CCHShared.makePseudoSpecialToken("compound_marker", "compound chord separator"),
+      settings
+    );
+    separator.classList.add("tokenSeparator");
+    separator.setAttribute("aria-hidden", "true");
+    return separator;
+  }
+
   function renderInputPreview(entry, settings) {
     const wrapper = document.createElement("div");
     wrapper.className = "hintPreview";
@@ -232,17 +260,171 @@
     const row = document.createElement("div");
     row.className = "hintPreviewRow";
 
-    const tokens = CCHShared.entryInputTokens(entry);
-    for (const token of tokens) {
-      row.appendChild(renderToken(token, settings));
-    }
+    const segments = CCHShared.entryInputSegments(entry);
+    segments.forEach((segment, segmentIndex) => {
+      if (segmentIndex > 0) {
+        row.appendChild(renderSegmentSeparator(settings));
+      }
+
+      for (const token of segment.inputTokens) {
+        row.appendChild(renderToken(token, settings));
+      }
+    });
 
     wrapper.appendChild(row);
     return wrapper;
   }
 
+  function sortValueForEntry(entry, sortKey) {
+    switch (sortKey) {
+      case "input":
+        return CCHShared.entryInputSortText(entry).toLowerCase();
+      case "output":
+        return String(entry.outputText || "").toLowerCase();
+      case "unknown_compound":
+        return entry.flags.hasUnknownCompoundSegment ? "yes" : "no";
+      case "index":
+      default:
+        return Number(entry.index) || 0;
+    }
+  }
+
+  function compareEntriesForPreview(a, b) {
+    const aValue = sortValueForEntry(a, currentSort.key);
+    const bValue = sortValueForEntry(b, currentSort.key);
+
+    if (aValue < bValue) {
+      return currentSort.direction === "asc" ? -1 : 1;
+    }
+    if (aValue > bValue) {
+      return currentSort.direction === "asc" ? 1 : -1;
+    }
+    return (a.index ?? 0) - (b.index ?? 0);
+  }
+
+  function setSort(sortKey) {
+    if (currentSort.key === sortKey) {
+      currentSort.direction = currentSort.direction === "asc" ? "desc" : "asc";
+    } else {
+      currentSort = { key: sortKey, direction: sortKey === "unknown_compound" ? "desc" : "asc" };
+    }
+    currentPage = 1;
+    renderLoadedChords(currentSettingsFromForm());
+  }
+
+  function updateSortButtonLabels() {
+    const labels = {
+      input: "Input",
+      output: "Visible output",
+      unknown_compound: "Unknown compound?"
+    };
+
+    [
+      [els.sortInputButton, "input"],
+      [els.sortOutputButton, "output"],
+      [els.sortUnknownCompoundButton, "unknown_compound"]
+    ].forEach(([button, key]) => {
+      if (!button) return;
+      const isActive = currentSort.key === key;
+      const arrow = !isActive ? "" : (currentSort.direction === "asc" ? " ↑" : " ↓");
+      button.textContent = `${labels[key]}${arrow}`;
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
+  }
+
+  function startEditingEntry(entryIndex) {
+    const effectiveEntry = entryByIndex(currentDictionary, entryIndex);
+    if (!effectiveEntry) return;
+
+    editingEntryIndex = entryIndex;
+    editingSegmentTexts = CCHShared.entryEditableInputSegments(effectiveEntry);
+    renderLoadedChords(currentSettingsFromForm());
+  }
+
+  function updateEditingSegment(segmentIndex, value) {
+    if (editingEntryIndex === null) return;
+    editingSegmentTexts[segmentIndex] = value;
+    updateEditingControls();
+  }
+
+  function editingEntryBaseSegments() {
+    const baseEntry = entryByIndex(currentRawDictionary, editingEntryIndex);
+    return baseEntry ? CCHShared.entryEditableInputSegments(baseEntry) : [];
+  }
+
+  function editingHasSavedOverride() {
+    return editingEntryIndex !== null && Array.isArray(inputDisplayOverrides[String(editingEntryIndex)]);
+  }
+
+  function editingIsDirty() {
+    if (editingEntryIndex === null) return false;
+    const currentTexts = editingSegmentTexts.map((value) => String(value ?? ""));
+    const effectiveEntry = entryByIndex(currentDictionary, editingEntryIndex);
+    const effectiveTexts = effectiveEntry ? CCHShared.entryEditableInputSegments(effectiveEntry) : [];
+    if (currentTexts.length !== effectiveTexts.length) return true;
+    return currentTexts.some((value, index) => value !== String(effectiveTexts[index] ?? ""));
+  }
+
+  function updateEditingControls() {
+    const isEditing = editingEntryIndex !== null;
+    const dirty = editingIsDirty();
+    const hasSavedOverride = editingHasSavedOverride();
+
+    els.saveInputOverrideButton.disabled = !isEditing || !dirty;
+    els.revertInputOverrideButton.disabled = !isEditing || (!dirty && !hasSavedOverride);
+
+    if (!isEditing) {
+      els.editingStatus.textContent = "Click an input to edit it.";
+      return;
+    }
+
+    const suffix = dirty ? " (unsaved)" : (hasSavedOverride ? " (saved override)" : "");
+    els.editingStatus.textContent = `Editing entry ${editingEntryIndex}${suffix}`;
+  }
+
+  function sortedEntriesForPreview() {
+    return (currentDictionary?.entries || []).slice().sort(compareEntriesForPreview);
+  }
+
+  function goToPage(pageNumber) {
+    const entries = currentDictionary?.entries || [];
+    const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+    currentPage = Math.min(Math.max(1, pageNumber), totalPages);
+    renderLoadedChords(currentSettingsFromForm());
+  }
+
+  function renderEditableInput(entry, settings) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "editableInputSegments";
+
+    const segmentTexts = editingEntryIndex === entry.index
+      ? editingSegmentTexts
+      : CCHShared.entryEditableInputSegments(entry);
+
+    segmentTexts.forEach((segmentText, segmentIndex) => {
+      if (segmentIndex > 0) {
+        wrapper.appendChild(renderSegmentSeparator(settings));
+      }
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "segmentEditInput";
+      input.value = segmentText || "";
+      input.placeholder = segmentIndex === 0 && entry.flags.hasUnknownCompoundSegment ? "unknown segment" : "segment";
+      input.addEventListener("input", (event) => {
+        updateEditingSegment(segmentIndex, event.target.value);
+      });
+      wrapper.appendChild(input);
+    });
+
+    return wrapper;
+  }
+
   function renderLoadedChords(settings) {
     const entries = currentDictionary?.entries || [];
+
+    updateSortButtonLabels();
+    updateEditingControls();
 
     if (!entries.length) {
       els.loadedChordsEmpty.hidden = false;
@@ -250,6 +432,7 @@
       els.loadedSourceBadge.textContent = "source: —";
       els.loadedChordsTableBody.innerHTML = "";
       els.pageStatus.textContent = "";
+      els.pageJumpInput.value = "1";
       return;
     }
 
@@ -257,23 +440,34 @@
     els.loadedChordsPanel.hidden = false;
     els.loadedSourceBadge.textContent = `source: ${currentDictionary.source || "unknown"}`;
 
-    const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+    const sortedEntries = sortedEntriesForPreview();
+    const totalPages = Math.max(1, Math.ceil(sortedEntries.length / PAGE_SIZE));
     currentPage = Math.min(Math.max(1, currentPage), totalPages);
 
     const start = (currentPage - 1) * PAGE_SIZE;
-    const pageEntries = entries.slice(start, start + PAGE_SIZE);
+    const pageEntries = sortedEntries.slice(start, start + PAGE_SIZE);
 
     els.loadedChordsTableBody.innerHTML = "";
 
     for (const entry of pageEntries) {
       const tr = document.createElement("tr");
-
-      const tdIndex = document.createElement("td");
-      tdIndex.textContent = String(entry.index);
-      tr.appendChild(tdIndex);
+      if (editingEntryIndex === entry.index) {
+        tr.classList.add("editingRow");
+      }
 
       const tdInput = document.createElement("td");
-      tdInput.appendChild(renderInputPreview(entry, settings));
+      tdInput.className = "inputCell";
+
+      if (editingEntryIndex === entry.index) {
+        tdInput.appendChild(renderEditableInput(entry, settings));
+      } else {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "inputPreviewButton";
+        button.appendChild(renderInputPreview(entry, settings));
+        button.addEventListener("click", () => startEditingEntry(entry.index));
+        tdInput.appendChild(button);
+      }
       tr.appendChild(tdInput);
 
       const tdOutput = document.createElement("td");
@@ -282,20 +476,15 @@
       tdOutput.appendChild(output);
       tr.appendChild(tdOutput);
 
-      const tdNormalized = document.createElement("td");
-      const normalized = document.createElement("code");
-      normalized.textContent = entry.normalizedOutput || "";
-      tdNormalized.appendChild(normalized);
-      tr.appendChild(tdNormalized);
-
-      const tdFlags = document.createElement("td");
-      tdFlags.textContent = flagSummary(entry);
-      tr.appendChild(tdFlags);
+      const tdUnknown = document.createElement("td");
+      tdUnknown.textContent = entry.flags.hasUnknownCompoundSegment ? "yes" : "no";
+      tr.appendChild(tdUnknown);
 
       els.loadedChordsTableBody.appendChild(tr);
     }
 
-    els.pageStatus.textContent = `Page ${currentPage} of ${totalPages} · ${entries.length} total entries`;
+    els.pageStatus.textContent = `Page ${currentPage} of ${totalPages} · ${sortedEntries.length} total entries`;
+    els.pageJumpInput.value = String(currentPage);
     els.prevPageButton.disabled = currentPage <= 1;
     els.nextPageButton.disabled = currentPage >= totalPages;
   }
@@ -420,22 +609,212 @@
       .join("");
   }
 
+  function describeInputCode(code) {
+    if (code === 0) {
+      return {
+        code,
+        type: "empty",
+        label: "empty",
+        display: "·"
+      };
+    }
+
+    const specialMeta = CCHShared.SPECIAL_INPUT_META?.[code];
+    if (specialMeta) {
+      return {
+        code,
+        type: "special",
+        label: specialMeta.label,
+        display: `(${specialMeta.label})`
+      };
+    }
+
+    if (code >= 32 && code <= 126) {
+      return {
+        code,
+        type: "char",
+        label: String.fromCharCode(code),
+        display: String.fromCharCode(code)
+      };
+    }
+
+    return {
+      code,
+      type: "unknown",
+      label: `code ${code}`,
+      display: `(code ${code})`
+    };
+  }
+
+  function splitInputClusters(packedInputSlots) {
+    const clusters = [];
+    let currentCluster = [];
+
+    packedInputSlots.forEach((code, slotIndex) => {
+      if (code === 0) {
+        if (currentCluster.length) {
+          clusters.push(currentCluster);
+          currentCluster = [];
+        }
+        return;
+      }
+
+      currentCluster.push({
+        slotIndex,
+        ...describeInputCode(code)
+      });
+    });
+
+    if (currentCluster.length) {
+      clusters.push(currentCluster);
+    }
+
+    return clusters;
+  }
+
+  function renderClusterDisplay(cluster) {
+    return cluster.map((item) => item.display).join(" ");
+  }
+
+  function analyzePackedInputSlots(packedInputSlots) {
+    const slotValues = Array.isArray(packedInputSlots) ? packedInputSlots.slice() : [];
+    const slotDescriptions = slotValues.map((code, slotIndex) => ({
+      slotIndex,
+      ...describeInputCode(code)
+    }));
+
+    const clusters = splitInputClusters(slotValues);
+    const zeroSlotIndices = slotDescriptions
+      .filter((slot) => slot.code === 0)
+      .map((slot) => slot.slotIndex);
+
+    return {
+      slotDescriptions,
+      zeroSlotIndices,
+      clusters: clusters.map((cluster) => cluster.map((item) => ({
+        slotIndex: item.slotIndex,
+        code: item.code,
+        label: item.label,
+        display: item.display
+      }))),
+      hasInteriorZeroGap: clusters.length > 1,
+      hasNonAsciiCodes: slotDescriptions.some((slot) => slot.code !== 0 && slot.type !== "char"),
+      displayHypotheses: {
+        storedClusterOrder: clusters.map((cluster) => renderClusterDisplay(cluster)),
+        reversedClusterOrder: clusters.slice().reverse().map((cluster) => renderClusterDisplay(cluster)),
+        reversedWithinClusters: clusters.map((cluster) => renderClusterDisplay(cluster.slice().reverse())),
+        reversedClusterOrderAndWithin: clusters
+          .slice()
+          .reverse()
+          .map((cluster) => renderClusterDisplay(cluster.slice().reverse()))
+      }
+    };
+  }
+
+  function splitCompoundInputClustersFromPackedSlots(packedInputSlots) {
+    const reversedSlots = (Array.isArray(packedInputSlots) ? packedInputSlots.slice() : []).reverse();
+
+    while (reversedSlots.length && reversedSlots[0] === 0) {
+      reversedSlots.shift();
+    }
+    while (reversedSlots.length && reversedSlots[reversedSlots.length - 1] === 0) {
+      reversedSlots.pop();
+    }
+
+    const segments = [];
+    let currentSegment = [];
+
+    reversedSlots.forEach((code) => {
+      if (code === 0) {
+        if (currentSegment.length) {
+          segments.push(currentSegment);
+          currentSegment = [];
+        }
+        return;
+      }
+      currentSegment.push(code);
+    });
+
+    if (currentSegment.length) {
+      segments.push(currentSegment);
+    }
+
+    return segments;
+  }
+
+  function isRenderableCompoundSegment(segmentCodes) {
+    return (Array.isArray(segmentCodes) ? segmentCodes : []).every((code) => {
+      const description = describeInputCode(code);
+      return description.type === "char" || description.type === "special";
+    });
+  }
+
+  function collapseCompoundClusters(clusters) {
+    if (clusters.length <= 2) {
+      return clusters;
+    }
+
+    let trailingRenderableStart = clusters.length;
+    while (trailingRenderableStart > 0 && isRenderableCompoundSegment(clusters[trailingRenderableStart - 1])) {
+      trailingRenderableStart -= 1;
+    }
+
+    if (trailingRenderableStart <= 0 || trailingRenderableStart >= clusters.length) {
+      return clusters;
+    }
+
+    return [
+      clusters.slice(0, trailingRenderableStart).flat(),
+      clusters.slice(trailingRenderableStart).flat()
+    ];
+  }
+
+  function buildDecodedInputSegments(decodedInput) {
+    const rawClusters = splitCompoundInputClustersFromPackedSlots(decodedInput.packedInputSlots);
+    if (rawClusters.length <= 1) {
+      return [];
+    }
+
+    const clusters = collapseCompoundClusters(rawClusters);
+
+    return clusters.map((clusterCodes) => {
+      if (isRenderableCompoundSegment(clusterCodes)) {
+        return {
+          kind: "decoded",
+          inputCodes: clusterCodes
+        };
+      }
+
+      return {
+        kind: "unknown_compound",
+        inputCodes: clusterCodes,
+        inputTokens: [CCHShared.makePseudoSpecialToken("broken_image", "unknown compound segment")],
+        rawInput: CCHShared.UNKNOWN_COMPOUND_PLACEHOLDER,
+        editableText: "",
+        sortText: CCHShared.UNKNOWN_COMPOUND_PLACEHOLDER
+      };
+    });
+  }
+
   function decodeInputHex(inputHex) {
     const bits = inputHexToBitString(inputHex);
     const chainIndex = parseInt(bits.slice(0, 8), 2);
-    const packedInputCodes = [];
+    const packedInputSlots = [];
 
     for (let offset = 8; offset < 128; offset += 10) {
-      packedInputCodes.push(parseInt(bits.slice(offset, offset + 10), 2));
+      packedInputSlots.push(parseInt(bits.slice(offset, offset + 10), 2));
     }
 
-    const nonZeroPackedCodes = packedInputCodes.filter((code) => code !== 0);
+    const nonZeroPackedCodes = packedInputSlots.filter((code) => code !== 0);
     const ascendingInputCodes = nonZeroPackedCodes.slice().reverse();
+    const compoundInputSegments = buildDecodedInputSegments({ packedInputSlots });
 
     return {
       chainIndex,
+      packedInputSlots,
       packedInputCodes: nonZeroPackedCodes,
-      ascendingInputCodes
+      ascendingInputCodes,
+      compoundInputSegments
     };
   }
 
@@ -446,13 +825,13 @@
   }
 
   function parseCmlC1Line(line) {
-    const match = String(line || "").trim().match(/^CML\s+C1\s+(\d+)\s+([0-9A-Fa-f]{32})\s+([0-9A-Fa-f]+)\s+(\d+)$/);
+    const match = String(line || "").trim().match(/^CML\s+C1\s+(\d+)\s+([0-9A-Fa-f]{32})\s+([0-9A-Fa-f]*)\s+(\d+)$/);
     if (!match) return null;
 
     return {
       index: Number.parseInt(match[1], 10),
       inputHex: match[2].toUpperCase(),
-      outputHex: match[3].toUpperCase(),
+      outputHex: (match[3] || "").toUpperCase(),
       status: Number.parseInt(match[4], 10),
       rawLine: line
     };
@@ -640,11 +1019,28 @@
 
         const decodedInput = decodeInputHex(parsed.inputHex);
         const outputCodes = decodeOutputCodesFromHex(parsed.outputHex);
+        const inputAnalysis = analyzePackedInputSlots(decodedInput.packedInputSlots);
+
+        if (inputAnalysis.hasInteriorZeroGap || inputAnalysis.hasNonAsciiCodes) {
+          console.log("[CCH serial] packed input analysis", {
+            index: parsed.index,
+            inputHex: parsed.inputHex,
+            outputHex: parsed.outputHex,
+            chainIndex: decodedInput.chainIndex,
+            packedInputSlots: inputAnalysis.slotDescriptions,
+            zeroSlotIndices: inputAnalysis.zeroSlotIndices,
+            clusters: inputAnalysis.clusters,
+            displayHypotheses: inputAnalysis.displayHypotheses,
+            outputCodes,
+            visibleOutputText: CCHShared.visibleOutputText(outputCodes)
+          });
+        }
 
         entries.push(
           CCHShared.buildEntry({
             index: parsed.index,
             inputCodes: decodedInput.ascendingInputCodes,
+            inputSegments: decodedInput.compoundInputSegments.length ? decodedInput.compoundInputSegments : null,
             packedInputCodes: decodedInput.packedInputCodes,
             outputCodes,
             inputHex: parsed.inputHex,
@@ -667,9 +1063,16 @@
   }
 
   async function saveParsedDictionary(parsedDictionary, successMessage) {
-    await setStorage({ [STORAGE_KEYS.parsedDictionary]: parsedDictionary });
-    currentDictionary = hydrateDictionary(parsedDictionary);
+    await setStorage({
+      [STORAGE_KEYS.parsedDictionary]: parsedDictionary,
+      [STORAGE_KEYS.inputDisplayOverrides]: {}
+    });
+    currentRawDictionary = hydrateDictionary(parsedDictionary);
+    inputDisplayOverrides = {};
+    editingEntryIndex = null;
+    editingSegmentTexts = [];
     currentPage = 1;
+    applyCurrentDictionary();
     refreshMeta(currentDictionary);
     renderLoadedChords(currentSettingsFromForm());
     setStatus(els.importStatus, successMessage);
@@ -735,8 +1138,12 @@
   async function clearDictionary() {
     try {
       setBusy(true);
-      await removeStorage([STORAGE_KEYS.parsedDictionary]);
+      await removeStorage([STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides]);
+      currentRawDictionary = null;
       currentDictionary = null;
+      inputDisplayOverrides = {};
+      editingEntryIndex = null;
+      editingSegmentTexts = [];
       currentPage = 1;
       refreshMeta(null);
       renderLoadedChords(currentSettingsFromForm());
@@ -746,7 +1153,50 @@
     }
   }
 
+  async function saveEditedInputOverride() {
+    if (editingEntryIndex === null) return;
+
+    const baseEntry = entryByIndex(currentRawDictionary, editingEntryIndex);
+    if (!baseEntry) return;
+
+    const normalizedTexts = editingSegmentTexts.map((value) => String(value ?? ""));
+    const baseTexts = CCHShared.entryEditableInputSegments(baseEntry).map((value) => String(value ?? ""));
+    const nextOverrides = { ...(inputDisplayOverrides || {}) };
+
+    const matchesBase = normalizedTexts.length === baseTexts.length
+      && normalizedTexts.every((value, index) => value === baseTexts[index]);
+
+    if (matchesBase) {
+      delete nextOverrides[String(editingEntryIndex)];
+    } else {
+      nextOverrides[String(editingEntryIndex)] = normalizedTexts;
+    }
+
+    inputDisplayOverrides = nextOverrides;
+    await setStorage({ [STORAGE_KEYS.inputDisplayOverrides]: inputDisplayOverrides });
+    applyCurrentDictionary();
+    editingSegmentTexts = CCHShared.entryEditableInputSegments(entryByIndex(currentDictionary, editingEntryIndex) || baseEntry);
+    renderLoadedChords(currentSettingsFromForm());
+    setStatus(els.importStatus, `Saved display override for entry ${editingEntryIndex}.`);
+  }
+
+  async function revertEditedInputOverride() {
+    if (editingEntryIndex === null) return;
+
+    const nextOverrides = { ...(inputDisplayOverrides || {}) };
+    delete nextOverrides[String(editingEntryIndex)];
+    inputDisplayOverrides = nextOverrides;
+    await setStorage({ [STORAGE_KEYS.inputDisplayOverrides]: inputDisplayOverrides });
+    applyCurrentDictionary();
+
+    const baseEntry = entryByIndex(currentRawDictionary, editingEntryIndex);
+    editingSegmentTexts = baseEntry ? CCHShared.entryEditableInputSegments(baseEntry) : [];
+    renderLoadedChords(currentSettingsFromForm());
+    setStatus(els.importStatus, `Reverted entry ${editingEntryIndex} to the parsed device view.`);
+  }
+
   async function saveSettings() {
+
     try {
       const settings = currentSettingsFromForm();
       await setStorage({ [STORAGE_KEYS.settings]: settings });
@@ -760,8 +1210,14 @@
   }
 
   async function loadInitialState() {
-    const stored = await getStorage([STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.settings]);
-    currentDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
+    const stored = await getStorage([
+      STORAGE_KEYS.parsedDictionary,
+      STORAGE_KEYS.inputDisplayOverrides,
+      STORAGE_KEYS.settings
+    ]);
+    currentRawDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
+    inputDisplayOverrides = stored[STORAGE_KEYS.inputDisplayOverrides] || {};
+    applyCurrentDictionary();
     const settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
 
     applySettingsToForm(settings);
@@ -773,15 +1229,29 @@
   els.syncDeviceButton.addEventListener("click", syncFromDevice);
   els.clearButton.addEventListener("click", clearDictionary);
   els.saveSettingsButton.addEventListener("click", saveSettings);
+  els.saveInputOverrideButton.addEventListener("click", saveEditedInputOverride);
+  els.revertInputOverrideButton.addEventListener("click", revertEditedInputOverride);
+  els.sortInputButton.addEventListener("click", () => setSort("input"));
+  els.sortOutputButton.addEventListener("click", () => setSort("output"));
+  els.sortUnknownCompoundButton.addEventListener("click", () => setSort("unknown_compound"));
 
   els.prevPageButton.addEventListener("click", () => {
-    currentPage -= 1;
-    renderLoadedChords(currentSettingsFromForm());
+    goToPage(currentPage - 1);
   });
 
   els.nextPageButton.addEventListener("click", () => {
-    currentPage += 1;
-    renderLoadedChords(currentSettingsFromForm());
+    goToPage(currentPage + 1);
+  });
+
+  els.pageJumpButton.addEventListener("click", () => {
+    goToPage(Number.parseInt(els.pageJumpInput.value, 10) || 1);
+  });
+
+  els.pageJumpInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      goToPage(Number.parseInt(els.pageJumpInput.value, 10) || 1);
+    }
   });
 
   [

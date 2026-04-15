@@ -14,8 +14,13 @@
     dup_right: "icons/dup.svg",
     left_shift: "icons/shift.svg",
     right_shift: "icons/shift.svg",
-    arpeggiate: "icons/arpeggiate.svg"
+    arpeggiate: "icons/arpeggiate.svg",
+    broken_image: "icons/broken_image.svg",
+    compound_marker: "icons/cmpd-marker.svg"
   };
+
+  const INPUT_SEGMENT_SEPARATOR = " + ";
+  const UNKNOWN_COMPOUND_PLACEHOLDER = "�";
 
   function defaultSpecialTokenDescriptions() {
     return {
@@ -30,6 +35,120 @@
 
   function meaningfulInputCodes(inputCodes) {
     return (Array.isArray(inputCodes) ? inputCodes : []).filter((code) => code !== 0);
+  }
+
+  function sanitizeCodeArray(values) {
+    return (Array.isArray(values) ? values : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value));
+  }
+
+  function textToCodeArray(text) {
+    return Array.from(String(text ?? ""))
+      .map((char) => char.codePointAt(0))
+      .filter((value) => Number.isFinite(value));
+  }
+
+  function parseCompoundInputString(inputText) {
+    const safeText = String(inputText ?? "").trim();
+    if (!safeText) return [];
+
+    return safeText
+      .split(/\s*\+\s*/u)
+      .map((segmentText) => textToCodeArray(segmentText))
+      .filter((segmentCodes) => segmentCodes.length);
+  }
+
+  function normalizeInputSegmentsValue(inputValue) {
+    if (Array.isArray(inputValue)) {
+      if (inputValue.every((value) => Number.isFinite(Number(value)))) {
+        const codes = sanitizeCodeArray(inputValue);
+        return codes.length ? [codes] : [];
+      }
+
+      const nestedSegments = [];
+      for (const segmentValue of inputValue) {
+        nestedSegments.push(...normalizeInputSegmentsValue(segmentValue));
+      }
+      return nestedSegments;
+    }
+
+    if (typeof inputValue === "string") {
+      return parseCompoundInputString(inputValue);
+    }
+
+    if (inputValue && typeof inputValue === "object") {
+      if (Array.isArray(inputValue.inputSegments)) {
+        return normalizeInputSegmentsValue(inputValue.inputSegments);
+      }
+
+      if (Array.isArray(inputValue.segments)) {
+        return normalizeInputSegmentsValue(inputValue.segments);
+      }
+
+      if (Array.isArray(inputValue.inputCodes)) {
+        const codes = sanitizeCodeArray(inputValue.inputCodes);
+        return codes.length ? [codes] : [];
+      }
+
+      if (Array.isArray(inputValue.codes)) {
+        const codes = sanitizeCodeArray(inputValue.codes);
+        return codes.length ? [codes] : [];
+      }
+
+      if (typeof inputValue.rawInput === "string") {
+        return parseCompoundInputString(inputValue.rawInput);
+      }
+
+      if (typeof inputValue.text === "string") {
+        return parseCompoundInputString(inputValue.text);
+      }
+    }
+
+    return [];
+  }
+
+  function normalizeOutputCodesValue(outputValue) {
+    if (Array.isArray(outputValue)) {
+      return sanitizeCodeArray(outputValue);
+    }
+
+    if (typeof outputValue === "string") {
+      return textToCodeArray(outputValue);
+    }
+
+    if (outputValue && typeof outputValue === "object") {
+      if (Array.isArray(outputValue.outputCodes)) {
+        return sanitizeCodeArray(outputValue.outputCodes);
+      }
+
+      if (Array.isArray(outputValue.codes)) {
+        return sanitizeCodeArray(outputValue.codes);
+      }
+
+      if (typeof outputValue.outputText === "string") {
+        return textToCodeArray(outputValue.outputText);
+      }
+
+      if (typeof outputValue.text === "string") {
+        return textToCodeArray(outputValue.text);
+      }
+
+      if (typeof outputValue.word === "string") {
+        return textToCodeArray(outputValue.word);
+      }
+    }
+
+    return [];
+  }
+
+  function makePseudoSpecialToken(key, label) {
+    return {
+      type: "special",
+      code: null,
+      key,
+      label
+    };
   }
 
   function inputCodeToToken(code) {
@@ -58,6 +177,43 @@
     };
   }
 
+  function normalizeInputToken(token) {
+    if (!token || typeof token !== "object") {
+      return makePseudoSpecialToken("broken_image", "unknown compound segment");
+    }
+
+    if (token.type === "char") {
+      const char = typeof token.char === "string" && token.char ? token.char[0] : "";
+      if (char) {
+        return {
+          type: "char",
+          code: Number.isFinite(token.code) ? token.code : char.codePointAt(0),
+          char
+        };
+      }
+    }
+
+    if (token.type === "special") {
+      return {
+        type: "special",
+        code: Number.isFinite(token.code) ? token.code : null,
+        key: typeof token.key === "string" ? token.key : "broken_image",
+        label: typeof token.label === "string" ? token.label : "unknown compound segment"
+      };
+    }
+
+    if (token.type === "unknown") {
+      const code = Number.isFinite(token.code) ? token.code : null;
+      return {
+        type: "unknown",
+        code,
+        label: typeof token.label === "string" ? token.label : `code ${code ?? "?"}`
+      };
+    }
+
+    return makePseudoSpecialToken("broken_image", "unknown compound segment");
+  }
+
   function inputCodesToTokens(inputCodes) {
     return meaningfulInputCodes(inputCodes).map((code) => inputCodeToToken(code));
   }
@@ -65,6 +221,12 @@
   function tokenToRawDisplay(token) {
     if (token.type === "char") {
       return token.char;
+    }
+    if (token.type === "special" && token.key === "broken_image") {
+      return UNKNOWN_COMPOUND_PLACEHOLDER;
+    }
+    if (token.type === "special" && token.key === "compound_marker") {
+      return INPUT_SEGMENT_SEPARATOR;
     }
     return `(${token.label})`;
   }
@@ -77,14 +239,115 @@
     return inputTokensToRawDisplay(inputCodesToTokens(inputCodes));
   }
 
-  function entryInputTokens(entry) {
-    if (Array.isArray(entry?.inputTokens)) {
-      return entry.inputTokens;
+  function normalizeStoredInputSegments(inputSegments) {
+    return (Array.isArray(inputSegments) ? inputSegments : [])
+      .map((segment, index) => {
+        const safeInputCodes = Array.isArray(segment)
+          ? sanitizeCodeArray(segment)
+          : sanitizeCodeArray(segment?.inputCodes);
+
+        const kind = typeof segment?.kind === "string" ? segment.kind : "decoded";
+
+        let inputTokens;
+        if (Array.isArray(segment?.inputTokens) && segment.inputTokens.length) {
+          inputTokens = segment.inputTokens.map((token) => normalizeInputToken(token));
+        } else if (kind === "unknown_compound") {
+          inputTokens = [makePseudoSpecialToken("broken_image", "unknown compound segment")];
+        } else {
+          inputTokens = inputCodesToTokens(safeInputCodes);
+        }
+
+        let rawInput = typeof segment?.rawInput === "string"
+          ? segment.rawInput
+          : inputTokensToRawDisplay(inputTokens);
+
+        if (kind === "unknown_compound" && !rawInput) {
+          rawInput = UNKNOWN_COMPOUND_PLACEHOLDER;
+        }
+
+        const editableText = typeof segment?.editableText === "string"
+          ? segment.editableText
+          : (kind === "unknown_compound" ? "" : rawInput);
+
+        const sortText = typeof segment?.sortText === "string"
+          ? segment.sortText
+          : rawInput;
+
+        if (!safeInputCodes.length && !inputTokens.length && !rawInput && !editableText && kind !== "unknown_compound") {
+          return null;
+        }
+
+        return {
+          index,
+          kind,
+          inputCodes: safeInputCodes,
+          inputTokens,
+          rawInput,
+          editableText,
+          sortText
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function inputSegmentsToRawDisplay(inputSegments) {
+    return normalizeStoredInputSegments(inputSegments)
+      .map((segment) => segment.rawInput)
+      .join(INPUT_SEGMENT_SEPARATOR);
+  }
+
+  function entryInputSegments(entry) {
+    if (Array.isArray(entry?.inputSegments)) {
+      const normalizedSegments = normalizeStoredInputSegments(entry.inputSegments);
+      if (normalizedSegments.length) {
+        return normalizedSegments;
+      }
     }
+
     if (Array.isArray(entry?.inputCodes)) {
-      return inputCodesToTokens(entry.inputCodes);
+      const inputCodes = sanitizeCodeArray(entry.inputCodes);
+      const inputTokens = Array.isArray(entry?.inputTokens)
+        ? entry.inputTokens.map((token) => normalizeInputToken(token))
+        : inputCodesToTokens(inputCodes);
+
+      return [{
+        index: 0,
+        kind: "decoded",
+        inputCodes,
+        inputTokens,
+        rawInput: typeof entry?.rawInput === "string"
+          ? entry.rawInput
+          : inputTokensToRawDisplay(inputTokens),
+        editableText: typeof entry?.rawInput === "string"
+          ? entry.rawInput
+          : inputTokensToRawDisplay(inputTokens),
+        sortText: typeof entry?.rawInput === "string"
+          ? entry.rawInput
+          : inputTokensToRawDisplay(inputTokens)
+      }];
     }
+
+    if (typeof entry?.rawInput === "string" && entry.rawInput.trim()) {
+      return normalizeStoredInputSegments(
+        normalizeInputSegmentsValue(entry.rawInput)
+      );
+    }
+
     return [];
+  }
+
+  function entryInputTokens(entry) {
+    return entryInputSegments(entry).flatMap((segment) => segment.inputTokens);
+  }
+
+  function entryEditableInputSegments(entry) {
+    return entryInputSegments(entry).map((segment) => segment.editableText ?? segment.rawInput ?? "");
+  }
+
+  function entryInputSortText(entry) {
+    return entryInputSegments(entry)
+      .map((segment) => segment.sortText ?? segment.rawInput ?? "")
+      .join(INPUT_SEGMENT_SEPARATOR);
   }
 
   function visibleOutputText(outputCodes) {
@@ -116,11 +379,35 @@
     return (a.index ?? 0) - (b.index ?? 0);
   }
 
-  function buildEntry({ index, inputCodes, outputCodes, packedInputCodes = null, inputHex = null, outputHex = null, status = 0, userFlags = null }) {
-    const safeInputCodes = Array.isArray(inputCodes) ? inputCodes.slice() : [];
+  function buildEntry({
+    index,
+    inputCodes,
+    inputSegments = null,
+    rawInput = null,
+    outputCodes,
+    packedInputCodes = null,
+    inputHex = null,
+    outputHex = null,
+    status = 0,
+    userFlags = null
+  }) {
+    const derivedInputSegments = normalizeStoredInputSegments(
+      Array.isArray(inputSegments) && inputSegments.length
+        ? inputSegments
+        : normalizeInputSegmentsValue(
+            Array.isArray(inputCodes) && inputCodes.length
+              ? inputCodes
+              : rawInput
+          )
+    );
+
+    const safeInputSegments = derivedInputSegments.length
+      ? derivedInputSegments
+      : normalizeStoredInputSegments([sanitizeCodeArray(inputCodes)]);
+
+    const safeInputCodes = safeInputSegments.flatMap((segment) => segment.inputCodes);
+    const inputTokens = safeInputSegments.flatMap((segment) => segment.inputTokens);
     const safeOutputCodes = Array.isArray(outputCodes) ? outputCodes.slice() : [];
-    const inputTokens = inputCodesToTokens(safeInputCodes);
-    const rawInput = inputTokensToRawDisplay(inputTokens);
     const outputText = visibleOutputText(safeOutputCodes);
     const normalizedOutput = normalizeOutputKey(outputText);
     const nonZeroInput = meaningfulInputCodes(safeInputCodes);
@@ -128,13 +415,16 @@
     return {
       index,
       inputCodes: safeInputCodes,
+      inputSegments: safeInputSegments,
       inputTokens,
       outputCodes: safeOutputCodes,
       packedInputCodes: Array.isArray(packedInputCodes) ? packedInputCodes.slice() : null,
       inputHex,
       outputHex,
       status,
-      rawInput,
+      rawInput: safeInputSegments.length
+        ? inputSegmentsToRawDisplay(safeInputSegments)
+        : (rawInput || inputTokensToRawDisplay(inputTokens)),
       outputText,
       normalizedOutput,
       userFlags: {
@@ -143,7 +433,9 @@
       flags: {
         hasArpeggiate: nonZeroInput.includes(1001),
         hasModifierLikeOutput: safeOutputCodes.some((code) => code > 126),
-        outputLooksWordLike: /^[\p{L}\p{N}][\p{L}\p{N}'’.-]*$/u.test(outputText || "")
+        outputLooksWordLike: /^[\p{L}\p{N}][\p{L}\p{N}'’.-]*$/u.test(outputText || ""),
+        isCompoundInput: safeInputSegments.length > 1,
+        hasUnknownCompoundSegment: safeInputSegments.some((segment) => segment.kind === "unknown_compound")
       }
     };
   }
@@ -171,6 +463,44 @@
     };
   }
 
+  function normalizeChordPair(rawChord) {
+    if (Array.isArray(rawChord) && rawChord.length >= 2) {
+      const [rawInputValue, rawOutputValue] = rawChord;
+      return {
+        inputSegments: normalizeInputSegmentsValue(rawInputValue),
+        outputCodes: normalizeOutputCodesValue(rawOutputValue),
+        status: 0
+      };
+    }
+
+    if (!rawChord || typeof rawChord !== "object") {
+      return null;
+    }
+
+    const rawInputValue =
+      rawChord.inputSegments ??
+      rawChord.inputCodes ??
+      rawChord.input ??
+      rawChord.chord ??
+      rawChord.keys ??
+      rawChord.rawInput ??
+      null;
+
+    const rawOutputValue =
+      rawChord.outputCodes ??
+      rawChord.output ??
+      rawChord.outputText ??
+      rawChord.text ??
+      rawChord.word ??
+      null;
+
+    return {
+      inputSegments: normalizeInputSegmentsValue(rawInputValue),
+      outputCodes: normalizeOutputCodesValue(rawOutputValue),
+      status: Number.isFinite(rawChord.status) ? rawChord.status : 0
+    };
+  }
+
   function parseChordJson(jsonValue) {
     if (!jsonValue || typeof jsonValue !== "object") {
       throw new Error("Chord JSON must be an object.");
@@ -184,15 +514,16 @@
 
     const entries = [];
 
-    jsonValue.chords.forEach((pair, index) => {
-      if (!Array.isArray(pair) || pair.length !== 2) return;
-      const [inputCodes, outputCodes] = pair;
-      if (!Array.isArray(inputCodes) || !Array.isArray(outputCodes)) return;
+    jsonValue.chords.forEach((rawChord, index) => {
+      const normalizedPair = normalizeChordPair(rawChord);
+      if (!normalizedPair) return;
+      if (!normalizedPair.inputSegments.length || !normalizedPair.outputCodes.length) return;
 
       entries.push(buildEntry({
         index,
-        inputCodes,
-        outputCodes
+        inputSegments: normalizedPair.inputSegments,
+        outputCodes: normalizedPair.outputCodes,
+        status: normalizedPair.status
       }));
     });
 
@@ -212,6 +543,8 @@
       ? dictionary.entries.map((entry, index) => buildEntry({
           index: Number.isFinite(entry?.index) ? entry.index : index,
           inputCodes: Array.isArray(entry?.inputCodes) ? entry.inputCodes : [],
+          inputSegments: Array.isArray(entry?.inputSegments) ? entry.inputSegments : null,
+          rawInput: typeof entry?.rawInput === "string" ? entry.rawInput : null,
           outputCodes: Array.isArray(entry?.outputCodes) ? entry.outputCodes : [],
           packedInputCodes: Array.isArray(entry?.packedInputCodes) ? entry.packedInputCodes : null,
           inputHex: typeof entry?.inputHex === "string" ? entry.inputHex : null,
@@ -258,6 +591,66 @@
     }
   }
 
+  function buildOverrideSegments(baseEntry, segmentTexts) {
+    const baseSegments = entryInputSegments(baseEntry);
+    return baseSegments.map((baseSegment, segmentIndex) => {
+      const overrideText = typeof segmentTexts?.[segmentIndex] === "string"
+        ? segmentTexts[segmentIndex]
+        : baseSegment.editableText;
+
+      if (overrideText === "" && baseSegment.kind === "unknown_compound") {
+        return {
+          ...baseSegment,
+          inputTokens: baseSegment.inputTokens.map((token) => normalizeInputToken(token))
+        };
+      }
+
+      const overrideCodes = textToCodeArray(overrideText);
+      return {
+        index: baseSegment.index,
+        kind: "override",
+        inputCodes: overrideCodes,
+        inputTokens: inputCodesToTokens(overrideCodes),
+        rawInput: overrideText,
+        editableText: overrideText,
+        sortText: overrideText
+      };
+    });
+  }
+
+  function applyInputDisplayOverrides(dictionary, overrides) {
+    const hydratedDictionary = hydrateParsedDictionary(dictionary);
+    if (!hydratedDictionary) return null;
+
+    const safeOverrides = overrides && typeof overrides === "object" ? overrides : {};
+    const entries = hydratedDictionary.entries.map((entry) => {
+      const overrideSegments = safeOverrides[String(entry.index)] ?? safeOverrides[entry.index];
+      if (!Array.isArray(overrideSegments)) {
+        return entry;
+      }
+
+      return buildEntry({
+        index: entry.index,
+        inputCodes: entry.inputCodes,
+        inputSegments: buildOverrideSegments(entry, overrideSegments),
+        outputCodes: entry.outputCodes,
+        packedInputCodes: entry.packedInputCodes,
+        inputHex: entry.inputHex,
+        outputHex: entry.outputHex,
+        status: entry.status,
+        userFlags: entry.userFlags
+      });
+    });
+
+    return buildParsedDictionary({
+      entries,
+      source: hydratedDictionary.source,
+      charaVersion: hydratedDictionary.charaVersion,
+      deviceEntryCount: hydratedDictionary.deviceEntryCount,
+      savedAt: hydratedDictionary.savedAt
+    });
+  }
+
   function normalizeTokenForLookup(text) {
     return normalizeOutputKey(text);
   }
@@ -291,6 +684,7 @@
     hydrateParsedDictionary,
     buildParsedDictionary,
     buildEntry,
+    applyInputDisplayOverrides,
     defaultSettings,
     chooseEntries,
     normalizeTokenForLookup,
@@ -298,10 +692,17 @@
     inputCodesToRawDisplay,
     inputCodesToTokens,
     inputTokensToRawDisplay,
+    inputSegmentsToRawDisplay,
     entryInputTokens,
+    entryInputSegments,
+    entryEditableInputSegments,
+    entryInputSortText,
     visibleOutputText,
     SPECIAL_INPUT_META,
     ICON_FILE_MAP,
-    defaultSpecialTokenDescriptions
+    INPUT_SEGMENT_SEPARATOR,
+    UNKNOWN_COMPOUND_PLACEHOLDER,
+    defaultSpecialTokenDescriptions,
+    makePseudoSpecialToken
   };
 })();

@@ -1,6 +1,7 @@
 (() => {
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
+        inputDisplayOverrides: "inputDisplayOverrides",
         settings: "settings"
     };
 
@@ -234,6 +235,13 @@
         return el;
     }
 
+    function renderSegmentSeparator() {
+        const el = renderToken(CCHShared.makePseudoSpecialToken("compound_marker", "compound chord separator"));
+        el.classList.add("cch-token-separator");
+        el.setAttribute("aria-hidden", "true");
+        return el;
+    }
+
     function renderHintRows(entries) {
         const fragment = document.createDocumentFragment();
 
@@ -241,10 +249,16 @@
             const row = document.createElement("span");
             row.className = "cch-hint-row";
 
-            const tokens = CCHShared.entryInputTokens(entry);
-            for (const token of tokens) {
-                row.appendChild(renderToken(token));
-            }
+            const segments = CCHShared.entryInputSegments(entry);
+            segments.forEach((segment, segmentIndex) => {
+                if (segmentIndex > 0) {
+                    row.appendChild(renderSegmentSeparator());
+                }
+
+                for (const token of segment.inputTokens) {
+                    row.appendChild(renderToken(token));
+                }
+            });
 
             fragment.appendChild(row);
         }
@@ -425,8 +439,15 @@
     }
 
     async function loadState() {
-        const stored = await getStorage([STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.settings]);
-        STATE.dictionary = stored[STORAGE_KEYS.parsedDictionary] || null;
+        const stored = await getStorage([
+            STORAGE_KEYS.parsedDictionary,
+            STORAGE_KEYS.inputDisplayOverrides,
+            STORAGE_KEYS.settings
+        ]);
+        STATE.dictionary = CCHShared.applyInputDisplayOverrides(
+            stored[STORAGE_KEYS.parsedDictionary],
+            stored[STORAGE_KEYS.inputDisplayOverrides]
+        );
         STATE.settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
         applyAppearanceSettings();
 
@@ -598,17 +619,23 @@
             true
         );
     }
-    
+
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "local") return;
 
-        if (changes[STORAGE_KEYS.parsedDictionary]) {
-            STATE.dictionary = changes[STORAGE_KEYS.parsedDictionary].newValue || null;
-            log("Dictionary changed", {
-                entryCount: STATE.dictionary?.entryCount ?? 0
+        if (changes[STORAGE_KEYS.parsedDictionary] || changes[STORAGE_KEYS.inputDisplayOverrides]) {
+            const keysToReload = [STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides];
+            chrome.storage.local.get(keysToReload, (stored) => {
+                STATE.dictionary = CCHShared.applyInputDisplayOverrides(
+                    stored[STORAGE_KEYS.parsedDictionary],
+                    stored[STORAGE_KEYS.inputDisplayOverrides]
+                );
+                log("Dictionary changed", {
+                    entryCount: STATE.dictionary?.entryCount ?? 0
+                });
+                scheduleAnnotation(true);
             });
-            scheduleAnnotation(true);
         }
 
         if (changes[STORAGE_KEYS.settings]) {
