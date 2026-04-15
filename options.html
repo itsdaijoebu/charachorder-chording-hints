@@ -11,13 +11,14 @@
     <section class="card">
         <h1>Entertrained Charachorder Hints</h1>
         <p>
-            Load a Charachorder JSON chord export, then the extension will annotate matching words on
-            Entertrained prompt pages.
+            Load a chord dictionary by pasting a Charachorder JSON export, uploading a JSON file,
+            or syncing directly from a connected Charachorder. The most recently imported or synced
+            dictionary becomes the only active source used by the extension.
         </p>
 
         <div class="grid">
             <label class="field">
-                <span>Import chord JSON file</span>
+                <span>Upload chord JSON file</span>
                 <input id="jsonFile" type="file" accept=".json,application/json"/>
             </label>
 
@@ -28,7 +29,8 @@
         </div>
 
         <div class="actions">
-            <button id="importButton" type="button">Parse and save</button>
+            <button id="importButton" type="button">Import JSON chordmap</button>
+            <button id="syncDeviceButton" type="button">Sync from connected Charachorder</button>
             <button id="clearButton" type="button" class="secondary">Clear saved dictionary</button>
         </div>
 
@@ -39,8 +41,7 @@
         <h2>Display settings</h2>
         <section class="card">
             <h2>Hint appearance</h2>
-            <p class="muted">Box colors use a native color picker plus opacity, since native color inputs do not support
-                alpha.</p>
+            <p class="muted">Box colors use a native color picker plus opacity, since native color inputs do not support alpha.</p>
 
             <div class="field_grid">
                 <label class="field">
@@ -143,14 +144,12 @@
                 <span>Use extended tooltip text for special-token icons when available</span>
             </label>
 
-            <p class="muted">Hotkeys on an Entertrained prompt page: <code>Alt</code>+<code>Shift</code>+<code>P</code>
-                toggles pause, and <code>Alt</code>+<code>Shift</code>+<code>R</code> forces one refresh.</p>
+            <p class="muted">Hotkeys on an Entertrained prompt page: <code>Alt</code>+<code>Shift</code>+<code>P</code> toggles pause, and <code>Alt</code>+<code>Shift</code>+<code>R</code> forces one refresh.</p>
         </div>
 
         <details class="detailsCard">
             <summary>Special-token tooltip descriptions</summary>
-            <p class="muted">These descriptions are optional. When present, they appear in the tooltip for that
-                icon.</p>
+            <p class="muted">These descriptions are optional. When present, they appear in the tooltip for that icon.</p>
             <div class="grid compact" id="specialDescriptionFields">
                 <label class="field"><span>dup_all</span><input id="desc_dup_all" type="text"/></label>
                 <label class="field"><span>dup_left</span><input id="desc_dup_left" type="text"/></label>
@@ -171,12 +170,20 @@
         <h2>Saved data</h2>
         <dl class="meta" id="metaList">
             <div>
+                <dt>Source</dt>
+                <dd id="metaSource">—</dd>
+            </div>
+            <div>
                 <dt>Chara version</dt>
                 <dd id="metaVersion">—</dd>
             </div>
             <div>
                 <dt>Entries parsed</dt>
                 <dd id="metaCount">—</dd>
+            </div>
+            <div>
+                <dt>Device entry count</dt>
+                <dd id="metaDeviceCount">—</dd>
             </div>
             <div>
                 <dt>Saved</dt>
@@ -191,6 +198,9 @@
             <p class="muted">This is the parsed chord dictionary currently saved in the extension.</p>
             <div id="loadedChordsEmpty" class="status">No chord dictionary loaded.</div>
             <div id="loadedChordsPanel" hidden>
+                <div class="previewHeaderRow">
+                    <span id="loadedSourceBadge" class="sourceBadge">source: —</span>
+                </div>
                 <div class="paginationBar">
                     <button id="prevPageButton" type="button" class="secondary">Previous</button>
                     <span id="pageStatus"></span>
