@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Entertrained Charachorder Hints</title>
+    <link rel="stylesheet" href="options.css"/>
+</head>
+<body>
+<main class="page">
+    <section class="card">
+        <h1>Entertrained Charachorder Hints</h1>
+        <p>
+            Load a Charachorder JSON chord export, then the extension will annotate matching words on
+            Entertrained prompt pages.
+        </p>
+
+        <div class="grid">
+            <label class="field">
+                <span>Import chord JSON file</span>
+                <input id="jsonFile" type="file" accept=".json,application/json"/>
+            </label>
+
+            <label class="field">
+                <span>Or paste JSON</span>
+                <textarea id="jsonText" rows="12" spellcheck="false" placeholder='{"type":"chords", ...}'></textarea>
+            </label>
+        </div>
+
+        <div class="actions">
+            <button id="importButton" type="button">Parse and save</button>
+            <button id="clearButton" type="button" class="secondary">Clear saved dictionary</button>
+        </div>
+
+        <div id="importStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+        <h2>Display settings</h2>
+        <section class="card">
+            <h2>Hint appearance</h2>
+            <p class="muted">Box colors use a native color picker plus opacity, since native color inputs do not support
+                alpha.</p>
+
+            <div class="field_grid">
+                <label class="field">
+                    <span>Hint box dark-mode color</span>
+                    <input id="hintBoxDarkModeColor" type="color"/>
+                </label>
+
+                <label class="field">
+                    <span>Hint box dark-mode opacity</span>
+                    <input id="hintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"/>
+                </label>
+
+                <label class="field">
+                    <span>Hint text dark-mode color</span>
+                    <input id="hintTextDarkModeColor" type="color"/>
+                </label>
+
+                <label class="field">
+                    <span>Hint box light-mode color</span>
+                    <input id="hintBoxLightModeColor" type="color"/>
+                </label>
+
+                <label class="field">
+                    <span>Hint box light-mode opacity</span>
+                    <input id="hintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"/>
+                </label>
+
+                <label class="field">
+                    <span>Hint text light-mode color</span>
+                    <input id="hintTextLightModeColor" type="color"/>
+                </label>
+
+                <label class="field">
+                    <span>Hint text font size (em)</span>
+                    <input id="hintTextFontSizeEm" type="number" min="0.4" max="2" step="0.01"/>
+                </label>
+            </div>
+
+            <div class="previewCard">
+                <div class="previewTitle">Live preview</div>
+
+                <div class="previewRow previewRowDark">
+                    <span class="previewLabel">Dark mode</span>
+                    <span id="hintPreviewDark" class="previewHint">
+                        <span class="previewHintText">abily</span>
+                    </span>
+                </div>
+
+                <div class="previewRow previewRowLight">
+                    <span class="previewLabel">Light mode</span>
+                    <span id="hintPreviewLight" class="previewHint">
+                        <span class="previewHintText">abily</span>
+                    </span>
+                </div>
+            </div>
+        </section>
+
+        <div class="grid compact">
+            <label class="field">
+                <span>When multiple chords match a word</span>
+                <select id="selectionMode">
+                    <option value="shortest">Show the shortest</option>
+                    <option value="first">Show the first in export order</option>
+                    <option value="all">Show all matches</option>
+                </select>
+            </label>
+
+            <label class="check">
+                <input id="enabled" type="checkbox" checked/>
+                <span>Enable annotations on Entertrained</span>
+            </label>
+
+            <label class="check">
+                <input id="includeArpeggiates" type="checkbox"/>
+                <span>Include arpeggiate/prefix/suffix-style chords</span>
+            </label>
+
+            <label class="check">
+                <input id="includeModifierStyle" type="checkbox"/>
+                <span>Include modifier-style outputs</span>
+            </label>
+
+            <label class="check">
+                <input id="showDebugOutline" type="checkbox"/>
+                <span>Show debug outlines around detected token containers</span>
+            </label>
+
+            <label class="check">
+                <input id="debugLogging" type="checkbox"/>
+                <span>Enable debug logging in the page console</span>
+            </label>
+
+            <label class="check">
+                <input id="pauseLiveRefresh" type="checkbox"/>
+                <span>Pause live refresh while inspecting the page</span>
+            </label>
+
+            <label class="check">
+                <input id="showExtendedSpecialDescriptions" type="checkbox"/>
+                <span>Use extended tooltip text for special-token icons when available</span>
+            </label>
+
+            <p class="muted">Hotkeys on an Entertrained prompt page: <code>Alt</code>+<code>Shift</code>+<code>P</code>
+                toggles pause, and <code>Alt</code>+<code>Shift</code>+<code>R</code> forces one refresh.</p>
+        </div>
+
+        <details class="detailsCard">
+            <summary>Special-token tooltip descriptions</summary>
+            <p class="muted">These descriptions are optional. When present, they appear in the tooltip for that
+                icon.</p>
+            <div class="grid compact" id="specialDescriptionFields">
+                <label class="field"><span>dup_all</span><input id="desc_dup_all" type="text"/></label>
+                <label class="field"><span>dup_left</span><input id="desc_dup_left" type="text"/></label>
+                <label class="field"><span>dup_right</span><input id="desc_dup_right" type="text"/></label>
+                <label class="field"><span>left_shift</span><input id="desc_left_shift" type="text"/></label>
+                <label class="field"><span>right_shift</span><input id="desc_right_shift" type="text"/></label>
+                <label class="field"><span>arpeggiate</span><input id="desc_arpeggiate" type="text"/></label>
+            </div>
+        </details>
+
+        <div class="actions">
+            <button id="saveSettingsButton" type="button">Save settings</button>
+        </div>
+        <div id="settingsStatus" class="status"></div>
+    </section>
+
+    <section class="card">
+        <h2>Saved data</h2>
+        <dl class="meta" id="metaList">
+            <div>
+                <dt>Chara version</dt>
+                <dd id="metaVersion">—</dd>
+            </div>
+            <div>
+                <dt>Entries parsed</dt>
+                <dd id="metaCount">—</dd>
+            </div>
+            <div>
+                <dt>Saved</dt>
+                <dd id="metaSavedAt">—</dd>
+            </div>
+        </dl>
+    </section>
+
+    <section class="card">
+        <details id="loadedChordsDetails">
+            <summary>Loaded chords preview</summary>
+            <p class="muted">This is the parsed chord dictionary currently saved in the extension.</p>
+            <div id="loadedChordsEmpty" class="status">No chord dictionary loaded.</div>
+            <div id="loadedChordsPanel" hidden>
+                <div class="paginationBar">
+                    <button id="prevPageButton" type="button" class="secondary">Previous</button>
+                    <span id="pageStatus"></span>
+                    <button id="nextPageButton" type="button" class="secondary">Next</button>
+                </div>
+                <div class="tableWrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Input</th>
+                            <th>Visible output</th>
+                            <th>Normalized key</th>
+                            <th>Flags</th>
+                        </tr>
+                        </thead>
+                        <tbody id="loadedChordsTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </details>
+    </section>
+</main>
+
+<script src="shared.js"></script>
+<script src="options.js"></script>
+</body>
+</html>
