@@ -17,7 +17,7 @@
   let currentSort = { key: "index", direction: "asc" };
   let expandedEditorRows = new Set();
   let draftInputEdits = {};
-  let hideBlankOutputs = false;
+  let hideBlankOutputs = true;
   let inputSearchQuery = "";
   let outputSearchQuery = "";
 
@@ -25,7 +25,6 @@
 
   const els = {
     jsonFile: document.getElementById("jsonFile"),
-    jsonText: document.getElementById("jsonText"),
     optionsThemeMode: document.getElementById("optionsThemeMode"),
     importButton: document.getElementById("importButton"),
     syncDeviceButton: document.getElementById("syncDeviceButton"),
@@ -38,7 +37,6 @@
     includeModifierStyle: document.getElementById("includeModifierStyle"),
     showDebugOutline: document.getElementById("showDebugOutline"),
     debugLogging: document.getElementById("debugLogging"),
-    pauseLiveRefresh: document.getElementById("pauseLiveRefresh"),
     showExtendedSpecialDescriptions: document.getElementById("showExtendedSpecialDescriptions"),
 
     descDupAll: document.getElementById("desc_dup_all"),
@@ -54,7 +52,8 @@
     hintBoxLightModeColor: document.getElementById("hintBoxLightModeColor"),
     hintBoxLightModeOpacity: document.getElementById("hintBoxLightModeOpacity"),
     hintTextLightModeColor: document.getElementById("hintTextLightModeColor"),
-    hintTextFontSizeEm: document.getElementById("hintTextFontSizeEm"),
+    hintTextFontSizeValue: document.getElementById("hintTextFontSizeValue"),
+    hintTextFontSizeUnit: document.getElementById("hintTextFontSizeUnit"),
 
     hintPreviewDark: document.getElementById("hintPreviewDark"),
     hintPreviewLight: document.getElementById("hintPreviewLight"),
@@ -160,6 +159,15 @@
     if (!["system", "light", "dark"].includes(settings.themeMode)) {
       settings.themeMode = "system";
     }
+
+    const rawHintTextSizeValue = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em;
+    settings.hint_text_font_size_value = clampNumber(rawHintTextSizeValue, 0.1, 64, 0.5);
+    settings.hint_text_font_size_unit = ["em", "px"].includes(settings.hint_text_font_size_unit)
+      ? settings.hint_text_font_size_unit
+      : "em";
+    settings.hint_text_font_size_em = settings.hint_text_font_size_unit === "em"
+      ? settings.hint_text_font_size_value
+      : settings.hint_text_font_size_em;
 
     return settings;
   }
@@ -635,7 +643,6 @@
       includeModifierStyle: els.includeModifierStyle.checked,
       showDebugOutline: els.showDebugOutline.checked,
       debugLogging: els.debugLogging.checked,
-      pauseLiveRefresh: els.pauseLiveRefresh.checked,
       showExtendedSpecialDescriptions: els.showExtendedSpecialDescriptions.checked,
 
       hint_box_dark_mode_color: els.hintBoxDarkModeColor.value || defaults.hint_box_dark_mode_color,
@@ -646,7 +653,16 @@
       hint_box_light_mode_opacity: clampNumber(els.hintBoxLightModeOpacity.value, 0, 1, defaults.hint_box_light_mode_opacity),
       hint_text_light_mode_color: els.hintTextLightModeColor.value || defaults.hint_text_light_mode_color,
 
-      hint_text_font_size_em: clampNumber(els.hintTextFontSizeEm.value, 0.4, 2, defaults.hint_text_font_size_em),
+      hint_text_font_size_value: clampNumber(
+        els.hintTextFontSizeValue.value,
+        0.1,
+        els.hintTextFontSizeUnit.value === "px" ? 64 : 4,
+        defaults.hint_text_font_size_value ?? defaults.hint_text_font_size_em
+      ),
+      hint_text_font_size_unit: els.hintTextFontSizeUnit.value === "px" ? "px" : "em",
+      hint_text_font_size_em: els.hintTextFontSizeUnit.value === "em"
+        ? clampNumber(els.hintTextFontSizeValue.value, 0.1, 4, defaults.hint_text_font_size_em)
+        : defaults.hint_text_font_size_em,
 
       specialTokenDescriptions: {
         dup_all: els.descDupAll.value,
@@ -672,7 +688,6 @@
     els.includeModifierStyle.checked = settings.includeModifierStyle;
     els.showDebugOutline.checked = settings.showDebugOutline;
     els.debugLogging.checked = settings.debugLogging;
-    els.pauseLiveRefresh.checked = settings.pauseLiveRefresh;
     els.showExtendedSpecialDescriptions.checked = settings.showExtendedSpecialDescriptions;
 
     els.hintBoxDarkModeColor.value = settings.hint_box_dark_mode_color || "#949ec5";
@@ -683,7 +698,8 @@
     els.hintBoxLightModeOpacity.value = settings.hint_box_light_mode_opacity ?? 0.96;
     els.hintTextLightModeColor.value = settings.hint_text_light_mode_color || "#d0d1d7";
 
-    els.hintTextFontSizeEm.value = settings.hint_text_font_size_em ?? 0.5;
+    els.hintTextFontSizeValue.value = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em ?? 0.5;
+    els.hintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
 
     els.descDupAll.value = settings.specialTokenDescriptions.dup_all || "";
     els.descDupLeft.value = settings.specialTokenDescriptions.dup_left || "";
@@ -696,13 +712,18 @@
   }
 
   function updateAppearancePreview(settings) {
+    const hintTextSizeValue = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em ?? 0.5;
+    const hintTextSizeUnit = ["em", "px"].includes(settings.hint_text_font_size_unit)
+      ? settings.hint_text_font_size_unit
+      : "em";
+
     els.hintPreviewDark.style.background = hexToRgba(settings.hint_box_dark_mode_color, settings.hint_box_dark_mode_opacity);
     els.hintPreviewDark.style.color = settings.hint_text_dark_mode_color;
-    els.hintPreviewDark.style.fontSize = `${settings.hint_text_font_size_em}em`;
+    els.hintPreviewDark.style.fontSize = `${hintTextSizeValue}${hintTextSizeUnit}`;
 
     els.hintPreviewLight.style.background = hexToRgba(settings.hint_box_light_mode_color, settings.hint_box_light_mode_opacity);
     els.hintPreviewLight.style.color = settings.hint_text_light_mode_color;
-    els.hintPreviewLight.style.fontSize = `${settings.hint_text_font_size_em}em`;
+    els.hintPreviewLight.style.fontSize = `${hintTextSizeValue}${hintTextSizeUnit}`;
   }
 
   function parseHexBytes(hex) {
@@ -1221,12 +1242,9 @@
   }
 
   async function readChosenText() {
-    const pasted = els.jsonText.value.trim();
-    if (pasted) return pasted;
-
     const file = els.jsonFile.files?.[0];
     if (!file) {
-      throw new Error("Choose a JSON file or paste JSON text first.");
+      throw new Error("Choose a JSON file first.");
     }
 
     return await file.text();
@@ -1384,6 +1402,7 @@
   els.saveSettingsButton.addEventListener("click", saveSettings);
   els.saveInputOverrideButton.addEventListener("click", saveEditedInputOverride);
   els.revertInputOverrideButton.addEventListener("click", revertEditedInputOverride);
+  els.hideBlankOutputsToggle.checked = true;
   els.hideBlankOutputsToggle.addEventListener("change", () => {
     hideBlankOutputs = els.hideBlankOutputsToggle.checked;
     currentPage = 1;
@@ -1442,7 +1461,8 @@
     els.hintBoxLightModeColor,
     els.hintBoxLightModeOpacity,
     els.hintTextLightModeColor,
-    els.hintTextFontSizeEm
+    els.hintTextFontSizeValue,
+    els.hintTextFontSizeUnit
   ].forEach((el) => {
     el.addEventListener("input", () => updateAppearancePreview(currentSettingsFromForm()));
     el.addEventListener("change", () => updateAppearancePreview(currentSettingsFromForm()));

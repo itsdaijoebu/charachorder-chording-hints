@@ -5,7 +5,6 @@
         settings: "settings"
     };
 
-    const HOTKEY_TOGGLE_PAUSE = { altKey: true, shiftKey: true, code: "KeyP" };
     const HOTKEY_FORCE_REFRESH = { altKey: true, shiftKey: true, code: "KeyR" };
 
     const STATE = {
@@ -107,9 +106,16 @@
             settings.hint_text_light_mode_color
         );
 
+        const hintTextSizeValue = Number(
+            settings.hint_text_font_size_value ?? settings.hint_text_font_size_em
+        ) || 0.85;
+        const hintTextSizeUnit = ["em", "px"].includes(settings.hint_text_font_size_unit)
+            ? settings.hint_text_font_size_unit
+            : "em";
+
         root.style.setProperty(
             "--cch-label-font-size",
-            `${Number(settings.hint_text_font_size_em) || 0.85}em`
+            `${hintTextSizeValue}${hintTextSizeUnit}`
         );
     }
 
@@ -368,18 +374,12 @@
         STATE.scheduled = false;
         STATE.scheduledForce = false;
 
-        if (STATE.settings.pauseLiveRefresh && !force) {
-            log("Annotation pass skipped because live refresh is paused");
-            return;
-        }
-
         if (!STATE.settings.enabled || !STATE.dictionary) {
             STATE.trackedParagraphs.forEach(clearAnnotationsWithin);
             STATE.trackedParagraphs = [];
             log("Annotation skipped", {
                 enabled: STATE.settings.enabled,
                 hasDictionary: Boolean(STATE.dictionary),
-                paused: STATE.settings.pauseLiveRefresh
             });
             return;
         }
@@ -420,11 +420,6 @@
     }
 
     function scheduleAnnotation(force = false) {
-        if (STATE.settings.pauseLiveRefresh && !force) {
-            log("Schedule skipped because live refresh is paused");
-            return;
-        }
-
         if (STATE.scheduled) {
             STATE.scheduledForce = STATE.scheduledForce || force;
             return;
@@ -459,11 +454,6 @@
     }
 
     function handlePotentialPromptChange(reason) {
-        if (STATE.settings.pauseLiveRefresh) {
-            log("Prompt-change check skipped because live refresh is paused", { reason });
-            return;
-        }
-
         window.clearTimeout(STATE.promptRefreshTimer);
         STATE.promptRefreshTimer = window.setTimeout(() => {
             const nextSignature = buildPromptSignature();
@@ -577,35 +567,11 @@
             event.code === hotkey.code
         );
     }
-
-    async function togglePauseLiveRefresh() {
-        const nextSettings = {
-            ...STATE.settings,
-            pauseLiveRefresh: !STATE.settings.pauseLiveRefresh
-        };
-
-        await setStorage({ [STORAGE_KEYS.settings]: nextSettings });
-        log("Pause toggled", { pauseLiveRefresh: nextSettings.pauseLiveRefresh });
-
-        if (!nextSettings.pauseLiveRefresh) {
-            scheduleAnnotation(true);
-        }
-    }
-
     function installHotkeys() {
         document.addEventListener(
             "keydown",
             (event) => {
                 if (isEditableTarget(event.target)) {
-                    return;
-                }
-
-                if (hotkeyMatches(event, HOTKEY_TOGGLE_PAUSE)) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    togglePauseLiveRefresh().catch((error) =>
-                        console.error("[CCH] failed to toggle pause", error)
-                    );
                     return;
                 }
 

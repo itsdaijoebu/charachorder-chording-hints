@@ -24,21 +24,19 @@
         </label>
       </div>
 
-      <div class="field_grid">
-        <label class="fieldLabel" for="jsonFile">
-          <span>Import JSON file</span>
-          <input id="jsonFile" type="file" accept="application/json,.json">
-        </label>
-        <label class="fieldLabel" for="jsonText">
-          <span>Or paste JSON</span>
-          <textarea id="jsonText" placeholder='{"type":"chords", ...}'></textarea>
-        </label>
-      </div>
+      <p class="muted">Sync from a connected Charachorder, or import a saved JSON export from disk.</p>
 
-      <div class="actions">
-        <button id="importButton" type="button">Import JSON</button>
-        <button id="syncDeviceButton" type="button">Sync from device</button>
-        <button id="clearButton" type="button" class="secondary">Clear saved dictionary</button>
+      <div class="importControlStack">
+        <button id="syncDeviceButton" type="button" class="tallButton">Sync from device</button>
+
+        <div class="fileImportRow">
+          <button id="importButton" type="button">Import JSON</button>
+          <input id="jsonFile" type="file" accept="application/json,.json">
+        </div>
+
+        <div class="actions">
+          <button id="clearButton" type="button" class="secondary">Clear saved dictionary</button>
+        </div>
       </div>
       <p id="importStatus" class="status"></p>
     </section>
@@ -64,7 +62,7 @@
           <button id="saveInputOverrideButton" type="button">Save all edited inputs</button>
           <button id="revertInputOverrideButton" type="button" class="secondary">Revert all unsaved edits</button>
           <label class="check inlineCheck" for="hideBlankOutputsToggle">
-            <input id="hideBlankOutputsToggle" type="checkbox">
+            <input id="hideBlankOutputsToggle" type="checkbox" checked>
             <span>Hide blank outputs</span>
           </label>
           <span id="editingStatus" class="muted">Click any input to edit multiple rows before saving.</span>
@@ -122,8 +120,7 @@
         <label class="check" for="includeModifierStyle"><input id="includeModifierStyle" type="checkbox"><span>Include modifier-style outputs</span></label>
         <label class="check" for="showDebugOutline"><input id="showDebugOutline" type="checkbox"><span>Show debug outlines</span></label>
         <label class="check" for="debugLogging"><input id="debugLogging" type="checkbox"><span>Enable debug logging</span></label>
-        <label class="check" for="pauseLiveRefresh"><input id="pauseLiveRefresh" type="checkbox"><span>Pause live refresh</span></label>
-        <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions" type="checkbox"><span>Show extended special-token descriptions</span></label>
+                <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions" type="checkbox"><span>Show extended special-token descriptions</span></label>
       </div>
     </section>
 
@@ -141,14 +138,26 @@
 
     <section class="card">
       <h2>Appearance</h2>
-      <div class="field_grid compactFields">
+      <div class="field_grid compactFields appearanceGrid">
         <label class="fieldLabel" for="hintBoxDarkModeColor"><span>Dark mode box color</span><input id="hintBoxDarkModeColor" type="color"></label>
-        <label class="fieldLabel" for="hintBoxDarkModeOpacity"><span>Dark mode box opacity</span><input id="hintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"></label>
         <label class="fieldLabel" for="hintTextDarkModeColor"><span>Dark mode text color</span><input id="hintTextDarkModeColor" type="color"></label>
+        <label class="fieldLabel" for="hintBoxDarkModeOpacity"><span>Dark mode box opacity</span><input id="hintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"></label>
         <label class="fieldLabel" for="hintBoxLightModeColor"><span>Light mode box color</span><input id="hintBoxLightModeColor" type="color"></label>
-        <label class="fieldLabel" for="hintBoxLightModeOpacity"><span>Light mode box opacity</span><input id="hintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
         <label class="fieldLabel" for="hintTextLightModeColor"><span>Light mode text color</span><input id="hintTextLightModeColor" type="color"></label>
-        <label class="fieldLabel" for="hintTextFontSizeEm"><span>Hint text size (em)</span><input id="hintTextFontSizeEm" type="number" min="0.1" max="4" step="0.05"></label>
+        <label class="fieldLabel" for="hintBoxLightModeOpacity"><span>Light mode box opacity</span><input id="hintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
+        <label class="fieldLabel appearanceFullRow" for="hintTextFontSizeValue">
+          <span class="labelWithTooltip tooltipable" data-tooltip="em scales with the surrounding font size, while px is a fixed pixel size. Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">
+            <span>Hint text size</span>
+            <img src="icons/tooltip.svg" alt="" class="tooltipIcon" aria-hidden="true">
+          </span>
+          <div class="inlineFieldPair">
+            <input id="hintTextFontSizeValue" type="number" min="0.1" max="64" step="0.1">
+            <select id="hintTextFontSizeUnit">
+              <option value="em">em</option>
+              <option value="px">px</option>
+            </select>
+          </div>
+        </label>
       </div>
 
       <div class="previewCard">

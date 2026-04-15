@@ -770,3 +770,132 @@ input[type="color"]::-moz-color-swatch {
   border: 0;
   border-radius: 8px;
 }
+
+.inlineFieldPair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 8px;
+  align-items: center;
+}
+
+.labelWithTooltip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tooltipable {
+  position: relative;
+  width: fit-content;
+  cursor: help;
+}
+
+.tooltipIcon {
+  width: 0.95rem;
+  height: 0.95rem;
+  opacity: 0.8;
+}
+
+.tooltipable::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--cch-card-border);
+  background: var(--cch-card-bg);
+  color: var(--cch-text);
+  box-shadow: var(--cch-card-shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.tooltipable:hover::after,
+.tooltipable:focus-within::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.importControlStack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fileImportRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fileImportRow button {
+  flex: 0 0 auto;
+}
+
+.fileImportRow input[type="file"] {
+  flex: 1 1 280px;
+  width: auto;
+}
+
+.appearanceGrid {
+  align-items: start;
+}
+
+.appearanceFullRow {
+  grid-column: 1 / -1;
+  max-width: 360px;
+}
+
+.appearanceGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.appearanceFullRow {
+  grid-column: auto;
+  max-width: none;
+}
+
+@media (max-width: 900px) {
+  .appearanceGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tallButton {
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+:root[data-theme="light"],
+:root[data-theme="system"],
+:root {
+  --cch-preview-light-surface: #f8fafc;
+  --cch-preview-light-text: #111827;
+}
+
+:root[data-theme="dark"] {
+  --cch-preview-light-surface: #e5e7eb;
+  --cch-preview-light-text: #111827;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --cch-preview-light-surface: #e5e7eb;
+    --cch-preview-light-text: #111827;
+  }
+}
+
+.previewRowLight {
+  background: var(--cch-preview-light-surface);
+}
+
+.previewRowLight .previewLabel {
+  color: var(--cch-preview-light-text);
+}
