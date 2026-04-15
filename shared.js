@@ -655,6 +655,110 @@
     return normalizeOutputKey(text);
   }
 
+
+  function defaultHotkeys() {
+    return {
+      forceRefresh: {
+        altKey: true,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: true,
+        code: "KeyR"
+      }
+    };
+  }
+
+  function hotkeyLabelFromCode(code) {
+    const safeCode = String(code || "");
+    if (!safeCode) return "";
+    if (/^Key[A-Z]$/.test(safeCode)) return safeCode.slice(3);
+    if (/^Digit[0-9]$/.test(safeCode)) return safeCode.slice(5);
+    const map = {
+      Backquote: "`",
+      Minus: "-",
+      Equal: "=",
+      BracketLeft: "[",
+      BracketRight: "]",
+      Backslash: "\\",
+
+      Semicolon: ";",
+      Quote: "'",
+      Comma: ",",
+      Period: ".",
+      Slash: "/",
+      Space: "Space",
+      Escape: "Esc",
+      Enter: "Enter",
+      Tab: "Tab",
+      Backspace: "Backspace",
+      Delete: "Delete",
+      Insert: "Insert",
+      Home: "Home",
+      End: "End",
+      PageUp: "Page Up",
+      PageDown: "Page Down",
+      ArrowUp: "Up",
+      ArrowDown: "Down",
+      ArrowLeft: "Left",
+      ArrowRight: "Right"
+    };
+    return map[safeCode] || safeCode;
+  }
+
+  function normalizeHotkey(rawHotkey, fallbackHotkey) {
+    const fallback = fallbackHotkey || defaultHotkeys().forceRefresh;
+    return {
+      altKey: Boolean(rawHotkey?.altKey ?? fallback.altKey),
+      ctrlKey: Boolean(rawHotkey?.ctrlKey ?? fallback.ctrlKey),
+      metaKey: Boolean(rawHotkey?.metaKey ?? fallback.metaKey),
+      shiftKey: Boolean(rawHotkey?.shiftKey ?? fallback.shiftKey),
+      code: typeof rawHotkey?.code === "string" && rawHotkey.code ? rawHotkey.code : fallback.code
+    };
+  }
+
+  function normalizeHotkeys(rawHotkeys) {
+    const defaults = defaultHotkeys();
+    return {
+      forceRefresh: normalizeHotkey(rawHotkeys?.forceRefresh, defaults.forceRefresh)
+    };
+  }
+
+  function hotkeyDisplay(rawHotkey) {
+    const hotkey = normalizeHotkey(rawHotkey, defaultHotkeys().forceRefresh);
+    const parts = [];
+    if (hotkey.ctrlKey) parts.push("Ctrl");
+    if (hotkey.altKey) parts.push("Alt");
+    if (hotkey.shiftKey) parts.push("Shift");
+    if (hotkey.metaKey) parts.push("Meta");
+    const keyLabel = hotkeyLabelFromCode(hotkey.code);
+    if (keyLabel) parts.push(keyLabel);
+    return parts.join("+");
+  }
+
+  function eventToHotkey(event) {
+    const code = String(event?.code || "");
+    if (!code) return null;
+    const modifierOnly = new Set([
+      "ShiftLeft",
+      "ShiftRight",
+      "ControlLeft",
+      "ControlRight",
+      "AltLeft",
+      "AltRight",
+      "MetaLeft",
+      "MetaRight"
+    ]);
+    if (modifierOnly.has(code)) return null;
+
+    return normalizeHotkey({
+      altKey: Boolean(event.altKey),
+      ctrlKey: Boolean(event.ctrlKey),
+      metaKey: Boolean(event.metaKey),
+      shiftKey: Boolean(event.shiftKey),
+      code
+    });
+  }
+
   function defaultSettings() {
     return {
       enabled: true,
@@ -676,7 +780,8 @@
 
       hint_text_font_size_value: 0.5,
       hint_text_font_size_unit: "em",
-      hint_text_font_size_em: 0.5
+      hint_text_font_size_em: 0.5,
+      hotkeys: defaultHotkeys()
     };
   }
 
@@ -704,6 +809,10 @@
     INPUT_SEGMENT_SEPARATOR,
     UNKNOWN_COMPOUND_PLACEHOLDER,
     defaultSpecialTokenDescriptions,
+    defaultHotkeys,
+    normalizeHotkeys,
+    hotkeyDisplay,
+    eventToHotkey,
     makePseudoSpecialToken
   };
 })();

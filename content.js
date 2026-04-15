@@ -5,7 +5,6 @@
         settings: "settings"
     };
 
-    const HOTKEY_FORCE_REFRESH = { altKey: true, shiftKey: true, code: "KeyR" };
 
     const STATE = {
         dictionary: null,
@@ -44,6 +43,8 @@
             ...CCHShared.defaultSpecialTokenDescriptions(),
             ...(merged.specialTokenDescriptions || {})
         };
+
+        merged.hotkeys = CCHShared.normalizeHotkeys(merged.hotkeys);
 
         return merged;
     }
@@ -560,9 +561,12 @@
         );
     }
 
-    function hotkeyMatches(event, hotkey) {
+    function hotkeyMatches(event, rawHotkey) {
+        const hotkey = CCHShared.normalizeHotkeys({ forceRefresh: rawHotkey }).forceRefresh;
         return (
             event.altKey === hotkey.altKey &&
+            event.ctrlKey === hotkey.ctrlKey &&
+            event.metaKey === hotkey.metaKey &&
             event.shiftKey === hotkey.shiftKey &&
             event.code === hotkey.code
         );
@@ -575,10 +579,12 @@
                     return;
                 }
 
-                if (hotkeyMatches(event, HOTKEY_FORCE_REFRESH)) {
+                if (hotkeyMatches(event, STATE.settings.hotkeys?.forceRefresh)) {
                     event.preventDefault();
                     event.stopPropagation();
-                    log("Forced refresh hotkey pressed");
+                    log("Forced refresh hotkey pressed", {
+                        hotkey: CCHShared.hotkeyDisplay(STATE.settings.hotkeys?.forceRefresh)
+                    });
                     scheduleAnnotation(true);
                 }
             },

@@ -20,6 +20,9 @@
   let hideBlankOutputs = true;
   let inputSearchQuery = "";
   let outputSearchQuery = "";
+  let saveButtonsResetTimer = null;
+  let optionHotkeys = CCHShared.defaultHotkeys();
+  let stopHotkeyCapture = null;
 
   document.documentElement.setAttribute("data-theme", "system");
 
@@ -60,6 +63,8 @@
 
     saveSettingsButton: document.getElementById("saveSettingsButton"),
     saveSettingsButtonSecondary: document.getElementById("saveSettingsButtonSecondary"),
+    returnToDefaultsButton: document.getElementById("returnToDefaultsButton"),
+    returnToDefaultsButtonSecondary: document.getElementById("returnToDefaultsButtonSecondary"),
     settingsStatus: document.getElementById("settingsStatus"),
 
     metaSource: document.getElementById("metaSource"),
@@ -124,6 +129,8 @@
     els.clearButton.disabled = isBusy;
     els.saveSettingsButton.disabled = isBusy;
     if (els.saveSettingsButtonSecondary) els.saveSettingsButtonSecondary.disabled = isBusy;
+    if (els.returnToDefaultsButton) els.returnToDefaultsButton.disabled = isBusy;
+    if (els.returnToDefaultsButtonSecondary) els.returnToDefaultsButtonSecondary.disabled = isBusy;
     if (els.saveInputOverrideButton) els.saveInputOverrideButton.disabled = isBusy || els.saveInputOverrideButton.disabled;
     if (els.revertInputOverrideButton) els.revertInputOverrideButton.disabled = isBusy || els.revertInputOverrideButton.disabled;
     if (els.pageJumpButton) els.pageJumpButton.disabled = isBusy;
@@ -157,6 +164,8 @@
       ...CCHShared.defaultSpecialTokenDescriptions(),
       ...(settings.specialTokenDescriptions || {})
     };
+
+    settings.hotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
 
     if (!["system", "light", "dark"].includes(settings.themeMode)) {
       settings.themeMode = "system";
@@ -666,6 +675,8 @@
         ? clampNumber(els.hintTextFontSizeValue.value, 0.1, 4, defaults.hint_text_font_size_em)
         : defaults.hint_text_font_size_em,
 
+      hotkeys: CCHShared.normalizeHotkeys(optionHotkeys),
+
       specialTokenDescriptions: {
         dup_all: els.descDupAll.value,
         dup_left: els.descDupLeft.value,
@@ -710,7 +721,73 @@
     els.descRightShift.value = settings.specialTokenDescriptions.right_shift || "";
     els.descArpeggiate.value = settings.specialTokenDescriptions.arpeggiate || "";
 
+    optionHotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
+    updateHotkeyDisplays();
+    clearHotkeyCaptureStatus();
     updateAppearancePreview(settings);
+  }
+
+
+  function updateHotkeyDisplays() {
+    if (els.forceRefreshHotkeyDisplay) {
+      els.forceRefreshHotkeyDisplay.textContent = CCHShared.hotkeyDisplay(optionHotkeys.forceRefresh);
+    }
+  }
+
+  function setHotkeyCaptureStatus(message, isError = false) {
+    if (!els.hotkeyCaptureStatus) return;
+    els.hotkeyCaptureStatus.textContent = message;
+    els.hotkeyCaptureStatus.classList.toggle("error", Boolean(isError));
+  }
+
+  function clearHotkeyCaptureStatus() {
+    setHotkeyCaptureStatus("Press “Change hotkey”, then press the new key combination. Press Escape to cancel.", false);
+  }
+
+  function startHotkeyCapture(button, onCapture) {
+    if (!button) return;
+    if (stopHotkeyCapture) {
+      stopHotkeyCapture();
+      stopHotkeyCapture = null;
+    }
+
+    const originalLabel = button.textContent;
+    button.textContent = "Press keys…";
+    button.classList.add("isRecording");
+    setHotkeyCaptureStatus("Listening for a new hotkey…", false);
+
+    const onKeyDown = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (event.code === "Escape") {
+        cleanup();
+        clearHotkeyCaptureStatus();
+        return;
+      }
+
+      const hotkey = CCHShared.eventToHotkey(event);
+      if (!hotkey) {
+        setHotkeyCaptureStatus("Use at least one non-modifier key.", true);
+        return;
+      }
+
+      onCapture(CCHShared.normalizeHotkeys({ forceRefresh: hotkey }).forceRefresh);
+      cleanup();
+      setHotkeyCaptureStatus(`New hotkey: ${CCHShared.hotkeyDisplay(hotkey)}`);
+    };
+
+    function cleanup() {
+      document.removeEventListener("keydown", onKeyDown, true);
+      button.textContent = originalLabel;
+      button.classList.remove("isRecording");
+      if (stopHotkeyCapture === cleanup) {
+        stopHotkeyCapture = null;
+      }
+    }
+
+    stopHotkeyCapture = cleanup;
+    document.addEventListener("keydown", onKeyDown, true);
   }
 
   function updateAppearancePreview(settings) {
@@ -1365,20 +1442,58 @@
     setStatus(els.importStatus, `Discarded ${dirtyCount} unsaved edit${dirtyCount === 1 ? "" : "s"}.`);
   }
 
-  async function saveSettings() {
 
+  function setSaveButtonsLabel(label) {
+    if (els.saveSettingsButton) els.saveSettingsButton.textContent = label;
+    if (els.saveSettingsButtonSecondary) els.saveSettingsButtonSecondary.textContent = label;
+  }
+
+  function flashSavedButtons() {
+    if (saveButtonsResetTimer) {
+      window.clearTimeout(saveButtonsResetTimer);
+    }
+    setSaveButtonsLabel("SAVED!");
+    saveButtonsResetTimer = window.setTimeout(() => {
+      setSaveButtonsLabel("Save settings");
+      saveButtonsResetTimer = null;
+    }, 2000);
+  }
+
+  async function saveSettings() {
     try {
       const settings = currentSettingsFromForm();
       await setStorage({ [STORAGE_KEYS.settings]: settings });
       renderLoadedChords(settings);
-      setStatus(els.settingsStatus, "Settings saved.");
+      setStatus(els.settingsStatus, "");
+      flashSavedButtons();
       console.log("[CCH options] saved settings", settings);
     } catch (error) {
       console.error(error);
+      setSaveButtonsLabel("Save settings");
       setStatus(els.settingsStatus, "Failed to save settings.", true);
     }
   }
 
+
+
+  async function resetSettingsToDefaults() {
+    const confirmed = window.confirm("Return all settings to their default values? This will overwrite your current saved settings.");
+    if (!confirmed) return;
+
+    try {
+      setBusy(true);
+      const defaults = hydrateSettings(CCHShared.defaultSettings());
+      applySettingsToForm(defaults);
+      updateAppearancePreview(defaults);
+      await setStorage({ [STORAGE_KEYS.settings]: defaults });
+      setStatus(els.settingsStatus, "Settings returned to defaults.");
+    } catch (error) {
+      console.error(error);
+      setStatus(els.settingsStatus, error.message || String(error), true);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function initializeCollapsibleSections() {
     const cards = Array.from(document.querySelectorAll("main > section.card"));
@@ -1454,6 +1569,8 @@
   });
   els.saveSettingsButton.addEventListener("click", saveSettings);
   if (els.saveSettingsButtonSecondary) els.saveSettingsButtonSecondary.addEventListener("click", saveSettings);
+  if (els.returnToDefaultsButton) els.returnToDefaultsButton.addEventListener("click", resetSettingsToDefaults);
+  if (els.returnToDefaultsButtonSecondary) els.returnToDefaultsButtonSecondary.addEventListener("click", resetSettingsToDefaults);
   els.saveInputOverrideButton.addEventListener("click", saveEditedInputOverride);
   els.revertInputOverrideButton.addEventListener("click", revertEditedInputOverride);
   els.hideBlankOutputsToggle.checked = true;
@@ -1487,6 +1604,18 @@
   els.pageJumpButton.addEventListener("click", () => {
     goToPage(Number.parseInt(els.pageJumpInput.value, 10) || 1);
   });
+
+  if (els.recordForceRefreshHotkeyButton) {
+    els.recordForceRefreshHotkeyButton.addEventListener("click", () => {
+      startHotkeyCapture(els.recordForceRefreshHotkeyButton, (nextHotkey) => {
+        optionHotkeys = {
+          ...optionHotkeys,
+          forceRefresh: nextHotkey
+        };
+        updateHotkeyDisplays();
+      });
+    });
+  }
 
   els.pageJumpInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {

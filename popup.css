@@ -1,0 +1,213 @@
+:root {
+    color-scheme: light dark;
+    --bg: #11131b;
+    --card: #1c2230;
+    --border: #31394d;
+    --text: #e8ecf8;
+    --muted: #aab3ca;
+    --button: #546189;
+    --button-hover: #64739f;
+    --secondary: #2b3244;
+    --secondary-hover: #384158;
+}
+
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg: #f4f6fb;
+        --card: #ffffff;
+        --border: #d7ddea;
+        --text: #161b2a;
+        --muted: #53607e;
+        --button: #44527d;
+        --button-hover: #52618f;
+        --secondary: #edf1f8;
+        --secondary-hover: #e1e7f2;
+    }
+}
+
+html,
+body {
+    border-radius: 14px;
+    overflow: hidden;
+}
+
+body {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.popupRoot {
+    width: 420px;
+    max-height: 600px;
+    overflow: auto;
+    padding: 12px;
+    box-sizing: border-box;
+    display: grid;
+    gap: 2px;
+}
+
+.popupCard {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 7px 14px;
+}
+
+.powerCard,
+.popupSyncCard {
+    display: grid;
+    gap: 4px;
+    background: var(--bg);
+    border: none;
+}
+
+.popupSyncCard .status {
+    margin: 0;
+}
+
+.popupSyncCard button {
+    padding-top: 15px;
+    padding-bottom: 15px;
+}
+
+
+h2 {
+    margin: 0 0 8px 0;
+    font-size: 1rem;
+}
+
+.popupActionsRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+button {
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: inherit;
+    cursor: pointer;
+    background: var(--button);
+    color: white;
+}
+
+button:hover {
+    background: var(--button-hover);
+}
+
+button.secondary {
+    background: var(--secondary);
+    color: var(--text);
+}
+
+button.secondary:hover {
+    background: var(--secondary-hover);
+}
+
+.field_grid {
+    display: grid;
+    gap: 12px;
+}
+
+.appearanceGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.appearanceFullRow {
+    grid-column: 1 / -1;
+}
+
+.fieldLabel {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.92rem;
+}
+
+.fieldLabel input,
+.fieldLabel select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.inlineFieldPair {
+    display: flex;
+    gap: 8px;
+}
+
+.inlineFieldPair > *:first-child {
+    flex: 1 1 auto;
+}
+
+.hotkeySection {
+    display: grid;
+    gap: 8px;
+}
+
+.hotkeyRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.hotkeyLabel {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.muted,
+.status {
+    color: var(--muted);
+}
+
+.status.error {
+    color: #ff7a7a;
+}
+
+.isRecording {
+    outline: 2px solid currentColor;
+}
+
+.powerCard {
+    display: flex;
+    justify-content: center;
+}
+
+.iconOnlyPowerButton {
+    width: 42px;
+    height: 42px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    box-shadow: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.iconOnlyPowerButton:hover {
+    background: transparent;
+}
+
+.iconOnlyPowerButton[data-enabled="true"] {
+    color: #1f8f43;
+    filter: drop-shadow(0 0 6px rgba(31, 143, 67, 0.55));
+}
+
+.iconOnlyPowerButton[data-enabled="false"] {
+    color: #ab3131;
+}
+
+.powerIcon {
+    width: 56px;
+    height: 56px;
+    background-color: currentColor;
+    -webkit-mask: url("icons/power.svg") center / contain no-repeat;
+    mask: url("icons/power.svg") center / contain no-repeat;
+}

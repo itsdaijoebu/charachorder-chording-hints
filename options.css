@@ -959,3 +959,24 @@ input[type="color"]::-moz-color-swatch {
 .collapsedSection .collapseChevron {
   transform: rotate(-90deg);
 }
+
+.hotkeySection {
+  display: grid;
+  gap: 12px;
+}
+
+.hotkeyRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.hotkeyLabel {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.isRecording {
+  outline: 2px solid currentColor;
+}
