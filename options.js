@@ -17,10 +17,16 @@
   let currentSort = { key: "index", direction: "asc" };
   let expandedEditorRows = new Set();
   let draftInputEdits = {};
+  let hideBlankOutputs = false;
+  let inputSearchQuery = "";
+  let outputSearchQuery = "";
+
+  document.documentElement.setAttribute("data-theme", "system");
 
   const els = {
     jsonFile: document.getElementById("jsonFile"),
     jsonText: document.getElementById("jsonText"),
+    optionsThemeMode: document.getElementById("optionsThemeMode"),
     importButton: document.getElementById("importButton"),
     syncDeviceButton: document.getElementById("syncDeviceButton"),
     clearButton: document.getElementById("clearButton"),
@@ -68,6 +74,9 @@
     loadedChordsTableBody: document.getElementById("loadedChordsTableBody"),
     saveInputOverrideButton: document.getElementById("saveInputOverrideButton"),
     revertInputOverrideButton: document.getElementById("revertInputOverrideButton"),
+    hideBlankOutputsToggle: document.getElementById("hideBlankOutputsToggle"),
+    inputSearchBox: document.getElementById("inputSearchBox"),
+    outputSearchBox: document.getElementById("outputSearchBox"),
     editingStatus: document.getElementById("editingStatus"),
     sortInputButton: document.getElementById("sortInputButton"),
     sortOutputButton: document.getElementById("sortOutputButton"),
@@ -122,7 +131,7 @@
 
   function setStatus(target, text, isError = false) {
     target.textContent = text;
-    target.style.color = isError ? "#b91c1c" : "#1f2937";
+    target.style.color = isError ? "var(--cch-status-error, #ef4444)" : "var(--cch-text)";
   }
 
   function clampNumber(value, min, max, fallback) {
@@ -139,6 +148,7 @@
   function hydrateSettings(rawSettings) {
     const settings = {
       ...CCHShared.defaultSettings(),
+      themeMode: "system",
       ...(rawSettings || {})
     };
 
@@ -146,6 +156,10 @@
       ...CCHShared.defaultSpecialTokenDescriptions(),
       ...(settings.specialTokenDescriptions || {})
     };
+
+    if (!["system", "light", "dark"].includes(settings.themeMode)) {
+      settings.themeMode = "system";
+    }
 
     return settings;
   }
@@ -420,12 +434,61 @@
     els.editingStatus.textContent = [expandedText, dirtyText].filter(Boolean).join(" · ");
   }
 
-  function sortedEntriesForPreview() {
-    return (currentDictionary?.entries || []).slice().sort(compareEntriesForPreview);
+  function sortedEntriesForPreview(entries = currentDictionary?.entries || []) {
+    return entries.slice().sort(compareEntriesForPreview);
+  }
+
+  function normalizeSearchText(value) {
+    return String(value || "").toLowerCase();
+  }
+
+  function normalizeInputSearchCharacters(value) {
+    return normalizeSearchText(value).replace(/\s+/g, "");
+  }
+
+  function matchesInputSearch(entry) {
+    const query = normalizeInputSearchCharacters(inputSearchQuery);
+    if (!query) return true;
+
+    const haystack = normalizeInputSearchCharacters(CCHShared.entryInputSortText(entry));
+    const counts = new Map();
+    for (const char of haystack) {
+      counts.set(char, (counts.get(char) || 0) + 1);
+    }
+    for (const char of query) {
+      const remaining = counts.get(char) || 0;
+      if (remaining <= 0) {
+        return false;
+      }
+      counts.set(char, remaining - 1);
+    }
+    return true;
+  }
+
+  function matchesOutputSearch(entry) {
+    const query = normalizeSearchText(outputSearchQuery);
+    if (!query) return true;
+    return normalizeSearchText(entry.outputText || "").includes(query);
+  }
+
+  function filteredEntriesForPreview() {
+    const entries = currentDictionary?.entries || [];
+    return entries.filter((entry) => {
+      if (hideBlankOutputs && !String(entry.outputText || "").trim()) {
+        return false;
+      }
+      if (!matchesInputSearch(entry)) {
+        return false;
+      }
+      if (!matchesOutputSearch(entry)) {
+        return false;
+      }
+      return true;
+    });
   }
 
   function goToPage(pageNumber) {
-    const entries = currentDictionary?.entries || [];
+    const entries = filteredEntriesForPreview();
     const totalPages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
     currentPage = Math.min(Math.max(1, pageNumber), totalPages);
     renderLoadedChords(currentSettingsFromForm());
@@ -497,7 +560,8 @@
     els.loadedChordsPanel.hidden = false;
     els.loadedSourceBadge.textContent = `source: ${currentDictionary.source || "unknown"}`;
 
-    const sortedEntries = sortedEntriesForPreview();
+    const filteredEntries = filteredEntriesForPreview();
+    const sortedEntries = sortedEntriesForPreview(filteredEntries);
     const totalPages = Math.max(1, Math.ceil(sortedEntries.length / PAGE_SIZE));
     currentPage = Math.min(Math.max(1, currentPage), totalPages);
 
@@ -505,6 +569,16 @@
     const pageEntries = sortedEntries.slice(start, start + PAGE_SIZE);
 
     els.loadedChordsTableBody.innerHTML = "";
+
+    if (!pageEntries.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 3;
+      td.className = "muted";
+      td.textContent = "No rows match the current filters.";
+      tr.appendChild(td);
+      els.loadedChordsTableBody.appendChild(tr);
+    }
 
     for (const entry of pageEntries) {
       const tr = document.createElement("tr");
@@ -543,7 +617,8 @@
       els.loadedChordsTableBody.appendChild(tr);
     }
 
-    els.pageStatus.textContent = `Page ${currentPage} of ${totalPages} · ${sortedEntries.length} total entries`;
+    const baseCount = currentDictionary?.entries?.length || 0;
+    els.pageStatus.textContent = `Page ${currentPage} of ${totalPages} · ${sortedEntries.length} shown${sortedEntries.length === baseCount ? "" : ` of ${baseCount}`}`;
     els.pageJumpInput.value = String(currentPage);
     els.prevPageButton.disabled = currentPage <= 1;
     els.nextPageButton.disabled = currentPage >= totalPages;
@@ -553,6 +628,7 @@
     const defaults = CCHShared.defaultSettings();
 
     return {
+      themeMode: els.optionsThemeMode.value || "system",
       selectionMode: els.selectionMode.value,
       enabled: els.enabled.checked,
       includeArpeggiates: els.includeArpeggiates.checked,
@@ -583,7 +659,13 @@
     };
   }
 
+  function applyOptionsTheme(themeMode) {
+    document.documentElement.setAttribute("data-theme", themeMode || "system");
+  }
+
   function applySettingsToForm(settings) {
+    els.optionsThemeMode.value = settings.themeMode || "system";
+    applyOptionsTheme(settings.themeMode || "system");
     els.selectionMode.value = settings.selectionMode;
     els.enabled.checked = settings.enabled;
     els.includeArpeggiates.checked = settings.includeArpeggiates;
@@ -1296,9 +1378,27 @@
   els.importButton.addEventListener("click", importJson);
   els.syncDeviceButton.addEventListener("click", syncFromDevice);
   els.clearButton.addEventListener("click", clearDictionary);
+  els.optionsThemeMode.addEventListener("change", () => {
+    applyOptionsTheme(els.optionsThemeMode.value || "system");
+  });
   els.saveSettingsButton.addEventListener("click", saveSettings);
   els.saveInputOverrideButton.addEventListener("click", saveEditedInputOverride);
   els.revertInputOverrideButton.addEventListener("click", revertEditedInputOverride);
+  els.hideBlankOutputsToggle.addEventListener("change", () => {
+    hideBlankOutputs = els.hideBlankOutputsToggle.checked;
+    currentPage = 1;
+    renderLoadedChords(currentSettingsFromForm());
+  });
+  els.inputSearchBox.addEventListener("input", () => {
+    inputSearchQuery = els.inputSearchBox.value || "";
+    currentPage = 1;
+    renderLoadedChords(currentSettingsFromForm());
+  });
+  els.outputSearchBox.addEventListener("input", () => {
+    outputSearchQuery = els.outputSearchBox.value || "";
+    currentPage = 1;
+    renderLoadedChords(currentSettingsFromForm());
+  });
   els.sortInputButton.addEventListener("click", () => setSort("input"));
   els.sortOutputButton.addEventListener("click", () => setSort("output"));
   els.sortUnknownCompoundButton.addEventListener("click", () => setSort("unknown_compound"));

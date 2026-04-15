@@ -9,8 +9,20 @@
 <body>
   <main class="page">
     <section class="card">
-      <h1>Charachorder Chording Hints</h1>
-      <p class="muted">Import a JSON export or sync directly from the device. The saved dictionary powers the on-page chord hints.</p>
+      <div class="pageHeaderRow">
+        <div>
+          <h1>Charachorder Chording Hints</h1>
+          <p class="muted">Import a JSON export or sync directly from the device. The saved dictionary powers the on-page chord hints.</p>
+        </div>
+        <label class="fieldLabel themeModeField" for="optionsThemeMode">
+          <span>Options theme</span>
+          <select id="optionsThemeMode">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+      </div>
 
       <div class="field_grid">
         <label class="fieldLabel" for="jsonFile">
@@ -51,12 +63,25 @@
         <div class="actions previewToolbar">
           <button id="saveInputOverrideButton" type="button">Save all edited inputs</button>
           <button id="revertInputOverrideButton" type="button" class="secondary">Revert all unsaved edits</button>
+          <label class="check inlineCheck" for="hideBlankOutputsToggle">
+            <input id="hideBlankOutputsToggle" type="checkbox">
+            <span>Hide blank outputs</span>
+          </label>
           <span id="editingStatus" class="muted">Click any input to edit multiple rows before saving.</span>
         </div>
 
         <div class="tableWrap">
           <table>
             <thead>
+              <tr class="searchRow">
+                <th>
+                  <input id="inputSearchBox" type="search" class="columnSearch" placeholder="Search input characters">
+                </th>
+                <th>
+                  <input id="outputSearchBox" type="search" class="columnSearch" placeholder="Search output text">
+                </th>
+                <th></th>
+              </tr>
               <tr>
                 <th><button id="sortInputButton" type="button" class="sortButton">Input</button></th>
                 <th><button id="sortOutputButton" type="button" class="sortButton">Visible output</button></th>
