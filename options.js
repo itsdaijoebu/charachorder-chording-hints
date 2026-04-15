@@ -14,7 +14,7 @@
   let currentRawDictionary = null;
   let currentDictionary = null;
   let inputDisplayOverrides = {};
-  let currentSort = { key: "index", direction: "asc" };
+  let currentSort = { key: "output", direction: "asc" };
   let expandedEditorRows = new Set();
   let draftInputEdits = {};
   let hideBlankOutputs = true;
@@ -59,6 +59,7 @@
     hintPreviewLight: document.getElementById("hintPreviewLight"),
 
     saveSettingsButton: document.getElementById("saveSettingsButton"),
+    saveSettingsButtonSecondary: document.getElementById("saveSettingsButtonSecondary"),
     settingsStatus: document.getElementById("settingsStatus"),
 
     metaSource: document.getElementById("metaSource"),
@@ -122,6 +123,7 @@
     els.syncDeviceButton.disabled = isBusy;
     els.clearButton.disabled = isBusy;
     els.saveSettingsButton.disabled = isBusy;
+    if (els.saveSettingsButtonSecondary) els.saveSettingsButtonSecondary.disabled = isBusy;
     if (els.saveInputOverrideButton) els.saveInputOverrideButton.disabled = isBusy || els.saveInputOverrideButton.disabled;
     if (els.revertInputOverrideButton) els.revertInputOverrideButton.disabled = isBusy || els.revertInputOverrideButton.disabled;
     if (els.pageJumpButton) els.pageJumpButton.disabled = isBusy;
@@ -1377,6 +1379,57 @@
     }
   }
 
+
+  function initializeCollapsibleSections() {
+    const cards = Array.from(document.querySelectorAll("main > section.card"));
+    cards.slice(1).forEach((section) => {
+      if (section.dataset.collapsibleInitialized === "true") return;
+
+      const heading = section.querySelector("h2");
+      if (!heading) return;
+
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.className = "collapseToggle";
+      toggle.setAttribute("aria-expanded", "true");
+
+      const label = document.createElement("span");
+      label.className = "collapseLabel";
+      label.textContent = heading.textContent || "Section";
+
+      const chevron = document.createElement("span");
+      chevron.className = "collapseChevron";
+      chevron.setAttribute("aria-hidden", "true");
+
+      toggle.append(label, chevron);
+      heading.replaceWith(toggle);
+
+      const body = document.createElement("div");
+      body.className = "collapsibleSectionBody";
+      while (toggle.nextSibling) {
+        body.appendChild(toggle.nextSibling);
+      }
+      section.appendChild(body);
+
+      toggle.addEventListener("click", () => {
+        const isExpanded = toggle.getAttribute("aria-expanded") === "true";
+        const nextExpanded = !isExpanded;
+        toggle.setAttribute("aria-expanded", String(nextExpanded));
+        body.hidden = !nextExpanded;
+        section.classList.toggle("collapsedSection", !nextExpanded);
+      });
+
+      const defaultCollapsed = section.dataset.collapsedDefault === "true";
+      if (defaultCollapsed) {
+        toggle.setAttribute("aria-expanded", "false");
+        body.hidden = true;
+        section.classList.add("collapsedSection");
+      }
+
+      section.dataset.collapsibleInitialized = "true";
+    });
+  }
+
   async function loadInitialState() {
     const stored = await getStorage([
       STORAGE_KEYS.parsedDictionary,
@@ -1400,6 +1453,7 @@
     applyOptionsTheme(els.optionsThemeMode.value || "system");
   });
   els.saveSettingsButton.addEventListener("click", saveSettings);
+  if (els.saveSettingsButtonSecondary) els.saveSettingsButtonSecondary.addEventListener("click", saveSettings);
   els.saveInputOverrideButton.addEventListener("click", saveEditedInputOverride);
   els.revertInputOverrideButton.addEventListener("click", revertEditedInputOverride);
   els.hideBlankOutputsToggle.checked = true;
@@ -1467,6 +1521,8 @@
     el.addEventListener("input", () => updateAppearancePreview(currentSettingsFromForm()));
     el.addEventListener("change", () => updateAppearancePreview(currentSettingsFromForm()));
   });
+
+  initializeCollapsibleSections();
 
   loadInitialState().catch((error) => {
     console.error(error);
