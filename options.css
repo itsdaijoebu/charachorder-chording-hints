@@ -194,7 +194,7 @@ button:hover { filter: brightness(1.03); }
 .meta {
   display: grid;
   gap: 10px;
-  margin: 0;
+  margin: 1rem;
 }
 
 .meta > div {
@@ -867,6 +867,7 @@ input[type="color"]::-moz-color-swatch {
 }
 
 .collapseChevron::before {
+  font-size: 1.5rem;
   content: "▾";
 }
 

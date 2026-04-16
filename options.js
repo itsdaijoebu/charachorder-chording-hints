@@ -45,12 +45,12 @@
         debugLogging: document.getElementById("debugLogging"),
         showExtendedSpecialDescriptions: document.getElementById("showExtendedSpecialDescriptions"),
 
-        descDupAll: document.getElementById("desc_dup_all"),
-        descDupLeft: document.getElementById("desc_dup_left"),
-        descDupRight: document.getElementById("desc_dup_right"),
-        descLeftShift: document.getElementById("desc_left_shift"),
-        descRightShift: document.getElementById("desc_right_shift"),
-        descArpeggiate: document.getElementById("desc_arpeggiate"),
+        // descDupAll: document.getElementById("desc_dup_all"),
+        // descDupLeft: document.getElementById("desc_dup_left"),
+        // descDupRight: document.getElementById("desc_dup_right"),
+        // descLeftShift: document.getElementById("desc_left_shift"),
+        // descRightShift: document.getElementById("desc_right_shift"),
+        // descArpeggiate: document.getElementById("desc_arpeggiate"),
 
         hintBoxDarkModeColor: document.getElementById("hintBoxDarkModeColor"),
         hintBoxDarkModeOpacity: document.getElementById("hintBoxDarkModeOpacity"),
@@ -78,7 +78,7 @@
 
         loadedChordsEmpty: document.getElementById("loadedChordsEmpty"),
         loadedChordsPanel: document.getElementById("loadedChordsPanel"),
-        loadedSourceBadge: document.getElementById("loadedSourceBadge"),
+        // loadedSourceBadge: document.getElementById("loadedSourceBadge"),
         loadedChordsTableBody: document.getElementById("loadedChordsTableBody"),
         saveInputOverrideButton: document.getElementById("saveInputOverrideButton"),
         revertInputOverrideButton: document.getElementById("revertInputOverrideButton"),
@@ -587,7 +587,7 @@
         if (!entries.length) {
             els.loadedChordsEmpty.hidden = false;
             els.loadedChordsPanel.hidden = true;
-            els.loadedSourceBadge.textContent = "source: —";
+            // els.loadedSourceBadge.textContent = "source: —";
             els.loadedChordsTableBody.innerHTML = "";
             els.pageStatus.textContent = "";
             els.pageJumpInput.value = "1";
@@ -596,7 +596,7 @@
 
         els.loadedChordsEmpty.hidden = true;
         els.loadedChordsPanel.hidden = false;
-        els.loadedSourceBadge.textContent = `source: ${currentDictionary.source || "unknown"}`;
+        // els.loadedSourceBadge.textContent = `source: ${currentDictionary.source || "unknown"}`;
 
         const filteredEntries = filteredEntriesForPreview();
         const sortedEntries = sortedEntriesForPreview(filteredEntries);
@@ -692,14 +692,15 @@
 
             hotkeys: CCHShared.normalizeHotkeys(optionHotkeys),
 
-            specialTokenDescriptions: {
-                dup_all: els.descDupAll.value,
-                dup_left: els.descDupLeft.value,
-                dup_right: els.descDupRight.value,
-                left_shift: els.descLeftShift.value,
-                right_shift: els.descRightShift.value,
-                arpeggiate: els.descArpeggiate.value
-            }
+            // specialTokenDescriptions: {
+            //     dup_all: els.descDupAll.value,
+            //     dup_left: els.descDupLeft.value,
+            //     dup_right: els.descDupRight.value,
+            //     left_shift: els.descLeftShift.value,
+            //     right_shift: els.descRightShift.value,
+            //     arpeggiate: els.descArpeggiate.value,
+            //    
+            // }
         };
     }
 
@@ -757,12 +758,12 @@
         els.hintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
         syncHintTextSizeFieldBehavior();
 
-        els.descDupAll.value = settings.specialTokenDescriptions.dup_all || "";
-        els.descDupLeft.value = settings.specialTokenDescriptions.dup_left || "";
-        els.descDupRight.value = settings.specialTokenDescriptions.dup_right || "";
-        els.descLeftShift.value = settings.specialTokenDescriptions.left_shift || "";
-        els.descRightShift.value = settings.specialTokenDescriptions.right_shift || "";
-        els.descArpeggiate.value = settings.specialTokenDescriptions.arpeggiate || "";
+        // els.descDupAll.value = settings.specialTokenDescriptions.dup_all || "";
+        // els.descDupLeft.value = settings.specialTokenDescriptions.dup_left || "";
+        // els.descDupRight.value = settings.specialTokenDescriptions.dup_right || "";
+        // els.descLeftShift.value = settings.specialTokenDescriptions.left_shift || "";
+        // els.descRightShift.value = settings.specialTokenDescriptions.right_shift || "";
+        // els.descArpeggiate.value = settings.specialTokenDescriptions.arpeggiate || "";
 
         optionHotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
         updateHotkeyDisplays();
@@ -1976,18 +1977,18 @@
         }
     });
 
-    [
-        els.showExtendedSpecialDescriptions,
-        els.descDupAll,
-        els.descDupLeft,
-        els.descDupRight,
-        els.descLeftShift,
-        els.descRightShift,
-        els.descArpeggiate
-    ].forEach((el) => {
-        el.addEventListener("input", () => renderLoadedChords(currentSettingsFromForm()));
-        el.addEventListener("change", () => renderLoadedChords(currentSettingsFromForm()));
-    });
+    // [
+    //     els.showExtendedSpecialDescriptions,
+    //     els.descDupAll,
+    //     els.descDupLeft,
+    //     els.descDupRight,
+    //     els.descLeftShift,
+    //     els.descRightShift,
+    //     els.descArpeggiate
+    // ].forEach((el) => {
+    //     el.addEventListener("input", () => renderLoadedChords(currentSettingsFromForm()));
+    //     el.addEventListener("change", () => renderLoadedChords(currentSettingsFromForm()));
+    // });
 
     [
         els.hintBoxDarkModeColor,

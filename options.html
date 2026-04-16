@@ -56,9 +56,9 @@
         <div><dt>Saved at</dt><dd id="metaSavedAt">—</dd></div>
       </dl>
 
-      <div class="previewHeaderRow">
-        <span id="loadedSourceBadge" class="sourceBadge">source: —</span>
-      </div>
+<!--      <div class="previewHeaderRow">-->
+<!--        <span id="loadedSourceBadge" class="sourceBadge">source: —</span>-->
+<!--      </div>-->
 
       <p id="loadedChordsEmpty" class="muted">No dictionary is currently loaded.</p>
 
@@ -82,7 +82,7 @@
                     <input id="inputSearchBox" type="search" class="columnSearch" placeholder="Search input characters">
                     <span
                       class="tooltipable columnSearchTooltip"
-                      data-tooltip="Search input characters in any order. For example, entering tn will match inputs that contain both t and n, even if the stored order is different."
+                      data-tooltip="Search chord input. Doesn't care about letter order. Ex: 'chara' and 'aarch' are the same search."
                       tabindex="0"
                       aria-label="Input search help"
                     >
@@ -95,7 +95,7 @@
                     <input id="outputSearchBox" type="search" class="columnSearch" placeholder="Search output text">
                     <span
                       class="tooltipable columnSearchTooltip"
-                      data-tooltip="Search visible output text as a normal text string. Matches are based on the output text itself."
+                      data-tooltip="Search chord output. Does care about letter order. Ex. 'chara' and 'aarch' are different searches."
                       tabindex="0"
                       aria-label="Output search help"
                     >
@@ -200,7 +200,7 @@
     </section>
 
 
-    <section class="card">
+    <section class="card" data-collapsed-default="true">
       <h2>Hotkeys</h2>
       <div class="hotkeySection">
         <div class="hotkeyRow">
@@ -214,17 +214,17 @@
       </div>
     </section>
 
-    <section class="card" data-collapsed-default="true">
-      <h2>Special token descriptions</h2>
-      <div class="field_grid compactFields">
-        <label class="fieldLabel" for="desc_dup_all"><span>dup_all</span><input id="desc_dup_all" type="text"></label>
-        <label class="fieldLabel" for="desc_dup_left"><span>dup_left</span><input id="desc_dup_left" type="text"></label>
-        <label class="fieldLabel" for="desc_dup_right"><span>dup_right</span><input id="desc_dup_right" type="text"></label>
-        <label class="fieldLabel" for="desc_left_shift"><span>left_shift</span><input id="desc_left_shift" type="text"></label>
-        <label class="fieldLabel" for="desc_right_shift"><span>right_shift</span><input id="desc_right_shift" type="text"></label>
-        <label class="fieldLabel" for="desc_arpeggiate"><span>arpeggiate</span><input id="desc_arpeggiate" type="text"></label>
-      </div>
-    </section>
+<!--    <section class="card" data-collapsed-default="true">-->
+<!--      <h2>Special token descriptions</h2>-->
+<!--      <div class="field_grid compactFields">-->
+<!--        <label class="fieldLabel" for="desc_dup_all"><span>dup_all</span><input id="desc_dup_all" type="text"></label>-->
+<!--        <label class="fieldLabel" for="desc_dup_left"><span>dup_left</span><input id="desc_dup_left" type="text"></label>-->
+<!--        <label class="fieldLabel" for="desc_dup_right"><span>dup_right</span><input id="desc_dup_right" type="text"></label>-->
+<!--        <label class="fieldLabel" for="desc_left_shift"><span>left_shift</span><input id="desc_left_shift" type="text"></label>-->
+<!--        <label class="fieldLabel" for="desc_right_shift"><span>right_shift</span><input id="desc_right_shift" type="text"></label>-->
+<!--        <label class="fieldLabel" for="desc_arpeggiate"><span>arpeggiate</span><input id="desc_arpeggiate" type="text"></label>-->
+<!--      </div>-->
+<!--    </section>-->
 
     <section class="saveSettingsCard">
       <div class="actions">

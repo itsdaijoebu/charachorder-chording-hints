@@ -1,11 +1,33 @@
 (() => {
   const SPECIAL_INPUT_META = {
+    256: { key: "inhibit_concatenator", label: "inhibit_concatenator" },
+    298: { key: "backspace", label: "backspace"},
+    335: { key: "kbright", label: "kbright"},
+    336: { key: "kbleft", label: "kbleft"},
+    337: { key: "kbdown", label: "kbdown"},
+    338: { key: "kbup", label: "kbup"},
     513: { key: "left_shift", label: "left_shift" },
     517: { key: "right_shift", label: "right_shift" },
     533: { key: "dup_right", label: "dup_right" },
     535: { key: "dup_all", label: "dup_all" },
     536: { key: "dup_left", label: "dup_left" },
-    1001: { key: "arpeggiate", label: "arpeggiate" }
+    540: { key: "ambileft_left", label: "ambileft_left" },
+    542: { key: "ambiright_right", label: "ambiright_right" },
+    545: { key: "hyperspace", label: "hyperspace" },
+    547: { key: "hyperspace_capture", label: "hyperspace_capture" },
+    548: { key: "layer1_left", label: "layer1_left" },
+    549: { key: "layer1_right", label: "layer1_right" },
+    550: { key: "layer2_left", label: "layer2_left" },
+    551: { key: "layer2_right", label: "layer2_right" },
+    552: { key: "layer3_left", label: "layer3_left" },
+    553: { key: "layer3_right", label: "layer3_right" },
+    554: { key: "layer4_left", label: "layer4_left" },
+    555: { key: "layer4_right", label: "layer4_right" },
+    573: { key: "capitalize", label: "capitalize" },
+    574: { key: "join", label: "join" },
+    575: { key: "quickfix", label: "quickfix" },
+    1001: { key: "arpeggiate", label: "arpeggiate" },
+    1002: { key: "tapdance", label: "tapdance" },
   };
 
   const ICON_FILE_MAP = {
@@ -16,7 +38,29 @@
     right_shift: "icons/shift.svg",
     arpeggiate: "icons/arpeggiate.svg",
     broken_image: "icons/broken_image.svg",
-    compound_marker: "icons/cmpd-marker.svg"
+    compound_marker: "icons/cmpd_marker.svg",
+    ambileft_left: "icons/ambileft.svg",
+    ambiright_right: "icons/ambiright.svg",
+    backspace: "icons/backspace.svg",
+    capitalize: "icons/capitalize.svg",
+    hyperspace: "icons/hyperspace.svg",
+    hyperspace_capture: "icons/hyperspace_capture.svg",
+    inhibit_concatenator: "icons/inhibit_concatenator.svg",
+    join: "icons/join.svg",
+    kbdown: "icons/kbdown.svg",
+    kbup: "icons/kbup.svg",
+    kbleft: "icons/kbleft.svg",
+    kbright: "icons/kbright.svg",
+    layer1_left: "icons/layer1.svg",
+    layer1_right: "icons/layer1.svg",
+    layer2_left: "icons/layer2.svg",
+    layer2_right: "icons/layer2.svg",
+    layer3_left: "icons/layer3.svg",
+    layer3_right: "icons/layer3.svg",
+    layer4_left: "icons/layer4.svg",
+    layer4_right: "icons/layer4.svg",
+    quickfix: "icons/quickfix.svg",
+    tapdance: "icons/tapdance.svg",
   };
 
   const INPUT_SEGMENT_SEPARATOR = " + ";
@@ -24,12 +68,36 @@
 
   function defaultSpecialTokenDescriptions() {
     return {
-      left_shift: "",
-      right_shift: "",
-      dup_right: "",
-      dup_all: "",
-      dup_left: "",
-      arpeggiate: ""
+      left_shift: "Left Shift",
+      right_shift: "Right Shift",
+      dup_right: "Repeat Last Character (Right)",
+      dup_all: "Repeat Last Input",
+      dup_left: "Repeat Last Character (Left)",
+      arpeggiate: "Arpeggiate Chord",
+      broken_image: "Missing An Icon For This",
+      compound_marker: "Compound or Dynamic Library Chord",
+      ambileft_left: "Ambidextrous Throwover (Left)",
+      ambiright_right: "Ambidextrous Throwover (Right)",
+      backspace: "Backspace",
+      capitalize: "Capitalize",
+      hyperspace: "Hyperspace",
+      hyperspace_capture: "Hyperspace Capture",
+      inhibit_concatenator: "Inhibit Concatenator - prevents concatenate after this chord",
+      join: "Join - delete the preveious concatenator",
+      kbdown: "Keyboard Down",
+      kbup: "Keyboard Up",
+      kbleft: "Keyboard Left",
+      kbright: "Keyboard Right",
+      layer1_left: "Layer 1 (Left)",
+      layer1_right: "Layer 1 (Right)",
+      layer2_left: "Layer 2 (Left)",
+      layer2_right: "Layer 2 (Right)",
+      layer3_left: "Layer 3 (Left)",
+      layer3_right: "Layer 3 (Right)",
+      layer4_left: "Layer 4 (Left)",
+      layer4_right: "Layer 4 (Right)",
+      quickfix: "Quickfix - delete last chord attempt",
+      tapdance: "Tap Dance Chord",
     };
   }
 
@@ -655,6 +723,37 @@
     return normalizeOutputKey(text);
   }
 
+  function serializeActions(actions) {
+    const safeActions = sanitizeCodeArray(actions).slice(0, 12);
+    let serialized = 0n;
+
+    for (let i = 1; i <= safeActions.length; i += 1) {
+      serialized |= BigInt(safeActions[safeActions.length - i] & 0x3ff) << BigInt((12 - i) * 10);
+    }
+
+    return serialized;
+  }
+
+  function hashChord(actions) {
+    const serialized = serializeActions(actions);
+    const chord = new Uint8Array(16);
+    const view = new DataView(chord.buffer);
+
+    view.setBigUint64(0, serialized & 0xffff_ffff_ffff_ffffn, true);
+    view.setBigUint64(8, serialized >> 64n, true);
+
+    let hash = 2166136261;
+    for (let i = 0; i < 16; i += 1) {
+      hash = Math.imul(hash ^ view.getUint8(i), 16777619);
+    }
+
+    if ((hash & 0xff) === 0xff) {
+      hash ^= 0xff;
+    }
+
+    return hash & 0x3fff_ffff;
+  }
+
 
   function defaultHotkeys() {
     return {
@@ -766,7 +865,7 @@
       includeArpeggiates: false,
       includeModifierStyle: false,
       showDebugOutline: false,
-      debugLogging: true,
+      debugLogging: false,
       showExtendedSpecialDescriptions: true,
       specialTokenDescriptions: defaultSpecialTokenDescriptions(),
 
@@ -813,6 +912,8 @@
     normalizeHotkeys,
     hotkeyDisplay,
     eventToHotkey,
-    makePseudoSpecialToken
+    makePseudoSpecialToken,
+    serializeActions,
+    hashChord
   };
 })();
