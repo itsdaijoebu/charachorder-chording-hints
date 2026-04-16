@@ -205,8 +205,10 @@
         }
     }
 
-    els.popupSyncButton.addEventListener("click", () => {
-        chrome.runtime.openOptionsPage();
+    els.popupSyncButton.addEventListener("click", async () => {
+        const url = chrome.runtime.getURL("options.html?syncIntent=1");
+        await chrome.tabs.create({ url });
+        window.close();
     });
 
     els.popupSaveButton.addEventListener("click", saveSettings);
