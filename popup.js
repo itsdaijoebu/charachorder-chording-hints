@@ -1,6 +1,6 @@
 (() => {
     const STORAGE_KEYS = {
-        settings: "cch_settings"
+        settings: "settings"
     };
 
     const els = {
@@ -8,6 +8,8 @@
         popupSaveButton: document.getElementById("popupSaveButton"),
         popupResetButton: document.getElementById("popupResetButton"),
         popupStatus: document.getElementById("popupStatus"),
+        popupThemeToggle: document.getElementById("popupThemeToggle"),
+        popupUseSystemTheme: document.getElementById("popupUseSystemTheme"),
         popupHintBoxDarkModeColor: document.getElementById("popupHintBoxDarkModeColor"),
         popupHintTextDarkModeColor: document.getElementById("popupHintTextDarkModeColor"),
         popupHintBoxDarkModeOpacity: document.getElementById("popupHintBoxDarkModeOpacity"),
@@ -16,16 +18,16 @@
         popupHintBoxLightModeOpacity: document.getElementById("popupHintBoxLightModeOpacity"),
         popupHintTextFontSizeValue: document.getElementById("popupHintTextFontSizeValue"),
         popupHintTextFontSizeUnit: document.getElementById("popupHintTextFontSizeUnit"),
-        popupForceRefreshHotkeyDisplay: document.getElementById("popupForceRefreshHotkeyDisplay"),
-        popupRecordForceRefreshHotkeyButton: document.getElementById("popupRecordForceRefreshHotkeyButton"),
-        popupHotkeyCaptureStatus: document.getElementById("popupHotkeyCaptureStatus"),
+        popupLightPreviewHint: document.getElementById("popupLightPreviewHint"),
+        popupDarkPreviewHint: document.getElementById("popupDarkPreviewHint"),
         popupEnabledButton: document.getElementById("popupEnabledButton"),
         // popupEnabledButtonLabel: document.getElementById("popupEnabledButtonLabel")
     };
 
+    const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
     let draftSettings = hydrateSettings(CCHShared.defaultSettings());
     let saveResetTimer = null;
-    let stopHotkeyCapture = null;
 
     function getStorage(keys) {
         return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -41,6 +43,57 @@
         return Math.min(max, Math.max(min, number));
     }
 
+    function hexToRgba(hex, opacity) {
+        const raw = String(hex || "").trim().replace(/^#/, "");
+        if (!/^[0-9a-fA-F]{6}$/.test(raw)) {
+            return hex || "transparent";
+        }
+        const red = parseInt(raw.slice(0, 2), 16);
+        const green = parseInt(raw.slice(2, 4), 16);
+        const blue = parseInt(raw.slice(4, 6), 16);
+        const alpha = clampNumber(opacity, 0, 1, 1);
+        return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    }
+
+    function syncHintTextSizeFieldBehavior() {
+        const unit = els.popupHintTextFontSizeUnit.value === "px" ? "px" : "em";
+        const max = unit === "px" ? 64 : 4;
+        const min = unit === "px" ? 1 : 0.1;
+        const step = unit === "px" ? 1 : 0.1;
+        const currentValue = clampNumber(
+            els.popupHintTextFontSizeValue.value,
+            min,
+            max,
+            unit === "px" ? 14 : 0.5
+        );
+
+        els.popupHintTextFontSizeValue.min = String(min);
+        els.popupHintTextFontSizeValue.max = String(max);
+        els.popupHintTextFontSizeValue.step = String(step);
+        els.popupHintTextFontSizeValue.value = unit === "px"
+            ? String(Math.round(currentValue))
+            : String(Math.round(currentValue * 10) / 10);
+    }
+
+    function updateAppearancePreview() {
+        const settings = currentSettingsFromForm();
+        const fontSize = `${settings.hint_text_font_size_value}${settings.hint_text_font_size_unit}`;
+
+        els.popupLightPreviewHint.style.background = hexToRgba(
+            settings.hint_box_light_mode_color,
+            settings.hint_box_light_mode_opacity
+        );
+        els.popupLightPreviewHint.style.color = settings.hint_text_light_mode_color;
+        els.popupLightPreviewHint.style.fontSize = fontSize;
+
+        els.popupDarkPreviewHint.style.background = hexToRgba(
+            settings.hint_box_dark_mode_color,
+            settings.hint_box_dark_mode_opacity
+        );
+        els.popupDarkPreviewHint.style.color = settings.hint_text_dark_mode_color;
+        els.popupDarkPreviewHint.style.fontSize = fontSize;
+    }
+
     function hydrateSettings(rawSettings) {
         const settings = {
             ...CCHShared.defaultSettings(),
@@ -51,10 +104,41 @@
             ...(settings.specialTokenDescriptions || {})
         };
         settings.hotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
+        if (!["system", "light", "dark"].includes(settings.themeMode)) {
+            settings.themeMode = "system";
+        }
         const rawHintTextSizeValue = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em;
         settings.hint_text_font_size_value = clampNumber(rawHintTextSizeValue, 0.1, 64, 0.5);
         settings.hint_text_font_size_unit = settings.hint_text_font_size_unit === "px" ? "px" : "em";
         return settings;
+    }
+
+    function resolveTheme(themeMode) {
+        if (themeMode === "dark") return "dark";
+        if (themeMode === "light") return "light";
+        return systemThemeQuery.matches ? "dark" : "light";
+    }
+
+    function themeModeFromControls() {
+        if (els.popupUseSystemTheme.checked) {
+            return "system";
+        }
+        return els.popupThemeToggle.checked ? "dark" : "light";
+    }
+
+    function syncThemeControls(themeMode) {
+        const preference = themeMode || "system";
+        const resolvedTheme = resolveTheme(preference);
+        els.popupUseSystemTheme.checked = preference === "system";
+        els.popupThemeToggle.checked = resolvedTheme === "dark";
+        els.popupThemeToggle.disabled = preference === "system";
+    }
+
+    function applyPopupTheme(themeMode) {
+        const preference = themeMode || "system";
+        const resolvedTheme = resolveTheme(preference);
+        document.documentElement.setAttribute("data-theme", resolvedTheme);
+        document.documentElement.setAttribute("data-theme-preference", preference);
     }
 
     function setStatus(message, isError = false) {
@@ -72,6 +156,8 @@
     }
 
     function applySettingsToForm(settings) {
+        syncThemeControls(settings.themeMode || "system");
+        applyPopupTheme(settings.themeMode || "system");
         els.popupHintBoxDarkModeColor.value = settings.hint_box_dark_mode_color;
         els.popupHintTextDarkModeColor.value = settings.hint_text_dark_mode_color;
         els.popupHintBoxDarkModeOpacity.value = settings.hint_box_dark_mode_opacity;
@@ -80,15 +166,16 @@
         els.popupHintBoxLightModeOpacity.value = settings.hint_box_light_mode_opacity;
         els.popupHintTextFontSizeValue.value = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em;
         els.popupHintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
-        els.popupForceRefreshHotkeyDisplay.textContent = CCHShared.hotkeyDisplay(settings.hotkeys.forceRefresh);
+        syncHintTextSizeFieldBehavior();
+        updateAppearancePreview();
         updateEnabledButton(settings.enabled);
-        clearHotkeyCaptureStatus();
     }
 
     function currentSettingsFromForm() {
         const defaults = CCHShared.defaultSettings();
         return hydrateSettings({
             ...draftSettings,
+            themeMode: themeModeFromControls(),
             hint_box_dark_mode_color: els.popupHintBoxDarkModeColor.value || defaults.hint_box_dark_mode_color,
             hint_text_dark_mode_color: els.popupHintTextDarkModeColor.value || defaults.hint_text_dark_mode_color,
             hint_box_dark_mode_opacity: clampNumber(els.popupHintBoxDarkModeOpacity.value, 0, 1, defaults.hint_box_dark_mode_opacity),
@@ -120,68 +207,68 @@
         els.popupEnabledButton.title = enabled ? "Disable extension" : "Enable extension";
     }
 
-    function setHotkeyCaptureStatus(message, isError = false) {
-        els.popupHotkeyCaptureStatus.textContent = message;
-        els.popupHotkeyCaptureStatus.classList.toggle("error", Boolean(isError));
-    }
-
-    function clearHotkeyCaptureStatus() {
-        setHotkeyCaptureStatus("Press “Change hotkey”, then press the new key combination. Press Escape to cancel.");
-    }
-
-    function startHotkeyCapture() {
-        if (stopHotkeyCapture) {
-            stopHotkeyCapture();
-            stopHotkeyCapture = null;
-        }
-
-        const button = els.popupRecordForceRefreshHotkeyButton;
-        const originalLabel = button.textContent;
-        button.textContent = "Press keys…";
-        button.classList.add("isRecording");
-        setHotkeyCaptureStatus("Listening for a new hotkey…");
-
-        const onKeyDown = (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            if (event.code === "Escape") {
-                cleanup();
-                clearHotkeyCaptureStatus();
-                return;
-            }
-
-            const hotkey = CCHShared.eventToHotkey(event);
-            if (!hotkey) {
-                setHotkeyCaptureStatus("Use at least one non-modifier key.", true);
-                return;
-            }
-
-            draftSettings.hotkeys = CCHShared.normalizeHotkeys({forceRefresh: hotkey});
-            els.popupForceRefreshHotkeyDisplay.textContent = CCHShared.hotkeyDisplay(draftSettings.hotkeys.forceRefresh);
-            cleanup();
-            setHotkeyCaptureStatus(`New hotkey: ${CCHShared.hotkeyDisplay(hotkey)}`);
-        };
-
-        function cleanup() {
-            document.removeEventListener("keydown", onKeyDown, true);
-            button.textContent = originalLabel;
-            button.classList.remove("isRecording");
-            if (stopHotkeyCapture === cleanup) stopHotkeyCapture = null;
-        }
-
-        stopHotkeyCapture = cleanup;
-        document.addEventListener("keydown", onKeyDown, true);
-    }
-
     async function loadInitialState() {
         const stored = await getStorage([STORAGE_KEYS.settings]);
         draftSettings = hydrateSettings(stored[STORAGE_KEYS.settings]);
         applySettingsToForm(draftSettings);
     }
 
+    async function saveThemeModePreference(themeMode) {
+        const nextThemeMode = themeMode || "system";
+        syncThemeControls(nextThemeMode);
+        applyPopupTheme(nextThemeMode);
+
+        try {
+            const stored = await getStorage([STORAGE_KEYS.settings]);
+            const savedSettings = hydrateSettings(stored[STORAGE_KEYS.settings]);
+            const nextSettings = hydrateSettings({
+                ...savedSettings,
+                themeMode: nextThemeMode
+            });
+
+            draftSettings = {
+                ...draftSettings,
+                themeMode: nextSettings.themeMode
+            };
+
+            await setStorage({[STORAGE_KEYS.settings]: nextSettings});
+            setStatus("");
+        } catch (error) {
+            console.error(error);
+            setStatus("Failed to save theme preference.", true);
+        }
+    }
+
+    async function saveEnabledPreference(enabled) {
+        const nextEnabled = Boolean(enabled);
+        updateEnabledButton(nextEnabled);
+
+        try {
+            const stored = await getStorage([STORAGE_KEYS.settings]);
+            const savedSettings = hydrateSettings(stored[STORAGE_KEYS.settings]);
+            const nextSettings = hydrateSettings({
+                ...savedSettings,
+                enabled: nextEnabled
+            });
+
+            draftSettings = {
+                ...draftSettings,
+                enabled: nextSettings.enabled
+            };
+
+            await setStorage({[STORAGE_KEYS.settings]: nextSettings});
+            setStatus("");
+        } catch (error) {
+            console.error(error);
+            updateEnabledButton(draftSettings.enabled);
+            setStatus("Failed to update enabled state.", true);
+        }
+    }
+
     async function saveSettings() {
         try {
             draftSettings = currentSettingsFromForm();
+            applyPopupTheme(draftSettings.themeMode || "system");
             await setStorage({[STORAGE_KEYS.settings]: draftSettings});
             setStatus("");
             flashSavedButton();
@@ -197,6 +284,7 @@
         try {
             draftSettings = hydrateSettings(CCHShared.defaultSettings());
             applySettingsToForm(draftSettings);
+            applyPopupTheme(draftSettings.themeMode || "system");
             await setStorage({[STORAGE_KEYS.settings]: draftSettings});
             setStatus("Defaults restored.");
         } catch (error) {
@@ -211,12 +299,46 @@
         window.close();
     });
 
+    systemThemeQuery.addEventListener("change", () => {
+        if (themeModeFromControls() === "system") {
+            syncThemeControls("system");
+            applyPopupTheme("system");
+        }
+    });
+
+    function handleThemeControlsChanged() {
+        const themeMode = themeModeFromControls();
+        syncThemeControls(themeMode);
+        applyPopupTheme(themeMode);
+        void saveThemeModePreference(themeMode);
+    }
+
+    els.popupThemeToggle.addEventListener("change", handleThemeControlsChanged);
+    els.popupUseSystemTheme.addEventListener("change", handleThemeControlsChanged);
+
+    [
+        els.popupHintBoxDarkModeColor,
+        els.popupHintTextDarkModeColor,
+        els.popupHintBoxDarkModeOpacity,
+        els.popupHintBoxLightModeColor,
+        els.popupHintTextLightModeColor,
+        els.popupHintBoxLightModeOpacity,
+        els.popupHintTextFontSizeValue
+    ].forEach((input) => {
+        input.addEventListener("input", updateAppearancePreview);
+        input.addEventListener("change", updateAppearancePreview);
+    });
+
+    els.popupHintTextFontSizeUnit.addEventListener("change", () => {
+        syncHintTextSizeFieldBehavior();
+        updateAppearancePreview();
+    });
+
     els.popupSaveButton.addEventListener("click", saveSettings);
     els.popupResetButton.addEventListener("click", resetSettings);
-    els.popupRecordForceRefreshHotkeyButton.addEventListener("click", startHotkeyCapture);
     els.popupEnabledButton.addEventListener("click", () => {
-        draftSettings.enabled = !draftSettings.enabled;
-        updateEnabledButton(draftSettings.enabled);
+        const nextEnabled = !draftSettings.enabled;
+        void saveEnabledPreference(nextEnabled);
     });
 
     loadInitialState().catch((error) => {

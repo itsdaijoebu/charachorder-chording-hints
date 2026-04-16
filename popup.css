@@ -1,30 +1,3 @@
-:root {
-    color-scheme: light dark;
-    --bg: #11131b;
-    --card: #1c2230;
-    --border: #31394d;
-    --text: #e8ecf8;
-    --muted: #aab3ca;
-    --button: #546189;
-    --button-hover: #64739f;
-    --secondary: #2b3244;
-    --secondary-hover: #384158;
-}
-
-@media (prefers-color-scheme: light) {
-    :root {
-        --bg: #f4f6fb;
-        --card: #ffffff;
-        --border: #d7ddea;
-        --text: #161b2a;
-        --muted: #53607e;
-        --button: #44527d;
-        --button-hover: #52618f;
-        --secondary: #edf1f8;
-        --secondary-hover: #e1e7f2;
-    }
-}
-
 html,
 body {
     border-radius: 14px;
@@ -55,7 +28,6 @@ body {
     padding: 7px 14px;
 }
 
-.powerCard,
 .popupSyncCard {
     display: grid;
     gap: 4px;
@@ -67,9 +39,31 @@ body {
     margin: 0;
 }
 
+.popupTopRow {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+    align-items: stretch;
+}
+
 .popupSyncCard button {
     padding-top: 15px;
     padding-bottom: 15px;
+}
+
+.popupTopRow > #popupSyncButton {
+    /*width: 100%;*/
+    /*border-top-right-radius: 0;*/
+    /*border-bottom-right-radius: 0;*/
+    margin-right: 2rem;
+}
+
+.popupEnabledSlot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-left: 2px solid var(--button);
+    padding-left: 10px;
+    margin-left: 1px;
 }
 
 
@@ -120,6 +114,122 @@ button.secondary:hover {
     grid-column: 1 / -1;
 }
 
+.labelWithTooltip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tooltipable {
+    position: relative;
+    cursor: help;
+}
+
+.tooltipIcon {
+    width: 0.95rem;
+    height: 0.95rem;
+    display: inline-block;
+    flex: 0 0 auto;
+    background-color: currentColor;
+    -webkit-mask: url("icons/tooltip.svg") center / contain no-repeat;
+    mask: url("icons/tooltip.svg") center / contain no-repeat;
+}
+
+.tooltipable::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 0;
+    top: calc(100% + 8px);
+    width: min(260px, 80vw);
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: var(--tooltip-shadow);
+    color: var(--text);
+    font-size: 0.82rem;
+    line-height: 1.35;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: opacity 140ms ease, transform 140ms ease;
+    z-index: 20;
+}
+
+.tooltipable:hover::after,
+.tooltipable:focus-within::after {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.popupThemeControls {
+    display: grid;
+    gap: 8px;
+}
+
+.popupThemeLabel {
+    font-weight: 600;
+}
+
+.popupThemeToggleRow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.popupThemeToggleText {
+    font-weight: 600;
+    color: var(--text);
+
+    transition: opacity 120ms ease;
+}
+
+:root[data-theme-preference="system"] .popupThemeToggleText {
+    opacity: 0.45;
+}
+
+#popupThemeToggle {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 46px;
+    height: 26px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    position: relative;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease;
+    padding: 0;
+}
+
+#popupThemeToggle::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--text);
+    transition: transform 120ms ease;
+}
+
+#popupThemeToggle:checked {
+    background: var(--button);
+    border-color: var(--button);
+}
+
+#popupThemeToggle:checked::before {
+    transform: translateX(20px);
+    background: var(--popup-switch-knob);
+}
+
+#popupThemeToggle:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .fieldLabel {
     display: flex;
     flex-direction: column;
@@ -142,21 +252,58 @@ button.secondary:hover {
     flex: 1 1 auto;
 }
 
-.hotkeySection {
+
+.popupPreviewGrid {
     display: grid;
-    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
 }
 
-.hotkeyRow {
+.popupPreviewPanel {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 8px;
+    display: grid;
+    gap: 6px;
+}
+
+.popupPreviewPanelLight {
+    background: var(--cch-preview-light-surface);
+    color: var(--cch-preview-light-text);
+}
+
+.popupPreviewPanelDark {
+    background: var(--cch-preview-dark-surface);
+    color: var(--cch-preview-dark-text);
+}
+
+.popupPreviewLabel {
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.popupPreviewCanvas {
+    min-height: 42px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
+    justify-content: center;
+    padding: 6px;
+    font-size: 2rem;
 }
 
-.hotkeyLabel {
+.popupPreviewHint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35em 0.55em;
+    border-radius: 0.55em;
+    line-height: 1.1;
     font-weight: 600;
-    margin-bottom: 4px;
+    text-align: center;
+    max-width: 100%;
+    word-break: break-word;
 }
 
 .muted,
@@ -165,16 +312,7 @@ button.secondary:hover {
 }
 
 .status.error {
-    color: #ff7a7a;
-}
-
-.isRecording {
-    outline: 2px solid currentColor;
-}
-
-.powerCard {
-    display: flex;
-    justify-content: center;
+    color: var(--popup-status-error);
 }
 
 .iconOnlyPowerButton {
@@ -196,12 +334,12 @@ button.secondary:hover {
 }
 
 .iconOnlyPowerButton[data-enabled="true"] {
-    color: #1f8f43;
-    filter: drop-shadow(0 0 6px rgba(31, 143, 67, 0.55));
+    color: var(--popup-power-enabled);
+    filter: drop-shadow(0 0 6px var(--popup-power-enabled-glow));
 }
 
 .iconOnlyPowerButton[data-enabled="false"] {
-    color: #ab3131;
+    color: var(--popup-power-disabled);
 }
 
 .powerIcon {

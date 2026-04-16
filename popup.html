@@ -4,18 +4,43 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Chording Hints</title>
+    <link rel="stylesheet" href="theme.css">
     <link rel="stylesheet" href="popup.css">
 </head>
 <body>
 <main class="popupRoot">
     <section class="popupCard popupSyncCard">
-        <button id="popupSyncButton" type="button">Sync chords (opens options page)</button>
+        <div class="popupTopRow">
+            <button id="popupSyncButton" type="button">Sync chords from options</button>
+            <div class="popupEnabledSlot">
+                <button
+                        id="popupEnabledButton"
+                        type="button"
+                        class="powerButton iconOnlyPowerButton"
+                        aria-pressed="true"
+                        aria-label="Disable extension"
+                        title="Enable extension"
+                >
+                    <span class="powerIcon" aria-hidden="true"></span>
+                </button>
+            </div>
+        </div>
         <p id="popupStatus" class="status"></p>
     </section>
 
     <section class="popupCard">
         <h2>Appearance</h2>
         <div class="field_grid compactFields appearanceGrid">
+            <div class="appearanceFullRow popupThemeControls">
+                <span class="popupThemeLabel">Popup theme</span>
+                <label class="popupThemeToggleRow" for="popupThemeToggle">
+                    <input id="popupUseSystemTheme" type="checkbox">
+                    <span>Use system theme</span>
+                    <span class="popupThemeToggleText">Light</span>
+                    <input id="popupThemeToggle" type="checkbox" role="switch" aria-label="Toggle dark theme">
+                    <span class="popupThemeToggleText">Dark</span>
+                </label>
+            </div>
             <label class="fieldLabel" for="popupHintBoxDarkModeColor"><span>Dark box color</span><input
                     id="popupHintBoxDarkModeColor" type="color"></label>
             <label class="fieldLabel" for="popupHintTextDarkModeColor"><span>Dark text color</span><input
@@ -29,7 +54,7 @@
             <label class="fieldLabel" for="popupHintBoxLightModeOpacity"><span>Light box opacity</span><input
                     id="popupHintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
             <label class="fieldLabel appearanceFullRow" for="popupHintTextFontSizeValue">
-                <span>Hint text size</span>
+                <span class="labelWithTooltip tooltipable" data-tooltip="em scales with the surrounding font size, while px is a fixed pixel size. Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">Hint text size <span class="tooltipIcon" aria-hidden="true"></span></span>
                 <div class="inlineFieldPair">
                     <input id="popupHintTextFontSizeValue" type="number" min="0.1" max="64" step="0.1">
                     <select id="popupHintTextFontSizeUnit">
@@ -38,20 +63,20 @@
                     </select>
                 </div>
             </label>
-        </div>
-    </section>
-
-    <section class="popupCard">
-        <h2>Hotkeys</h2>
-        <div class="hotkeySection">
-            <div class="hotkeyRow">
-                <div>
-                    <div class="hotkeyLabel">Force refresh hints</div>
-                    <div id="popupForceRefreshHotkeyDisplay" class="muted">Alt+Shift+R</div>
+            <div class="appearanceFullRow popupPreviewGrid" aria-label="Live appearance preview">
+                <div class="popupPreviewPanel popupPreviewPanelLight">
+                    <div class="popupPreviewCanvas">
+                        <div id="popupLightPreviewHint" class="popupPreviewHint">Sample hint</div>
+                    </div>
+                    <div class="popupPreviewLabel">Light</div>
                 </div>
-                <button id="popupRecordForceRefreshHotkeyButton" type="button" class="secondary">Change hotkey</button>
+                <div class="popupPreviewPanel popupPreviewPanelDark">
+                    <div class="popupPreviewCanvas">
+                        <div id="popupDarkPreviewHint" class="popupPreviewHint">Sample hint</div>
+                    </div>
+                    <div class="popupPreviewLabel">Dark</div>
+                </div>
             </div>
-            <p id="popupHotkeyCaptureStatus" class="status"></p>
         </div>
     </section>
 
@@ -60,25 +85,6 @@
             <button id="popupSaveButton" type="button">Save settings</button>
             <button id="popupResetButton" type="button" class="secondary">Revert to defaults</button>
         </div>
-    </section>
-
-    <!--  <section class="popupCard powerCard">-->
-    <!--    <button id="popupEnabledButton" type="button" class="powerButton" aria-pressed="true" title="Enable extension">-->
-    <!--      <span class="powerIcon" aria-hidden="true"></span>-->
-    <!--      <span id="popupEnabledButtonLabel">Enabled</span>-->
-    <!--    </button>-->
-    <!--  </section>-->
-    <section class="popupCard powerCard">
-        <button
-                id="popupEnabledButton"
-                type="button"
-                class="powerButton iconOnlyPowerButton"
-                aria-pressed="true"
-                aria-label="Disable extension"
-                title="Enable extension"
-        >
-            <span class="powerIcon" aria-hidden="true"></span>
-        </button>
     </section>
 
 </main>

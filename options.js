@@ -30,7 +30,8 @@
 
     const els = {
         jsonFile: document.getElementById("jsonFile"),
-        optionsThemeMode: document.getElementById("optionsThemeMode"),
+        optionsThemeToggle: document.getElementById("optionsThemeToggle"),
+        optionsUseSystemTheme: document.getElementById("optionsUseSystemTheme"),
         importButton: document.getElementById("importButton"),
         syncDeviceButton: document.getElementById("syncDeviceButton"),
         clearButton: document.getElementById("clearButton"),
@@ -202,6 +203,26 @@
         const g = parseInt(safeHex.slice(3, 5), 16);
         const b = parseInt(safeHex.slice(5, 7), 16);
         return `rgba(${r}, ${g}, ${b}, ${safeOpacity})`;
+    }
+
+    function syncHintTextSizeFieldBehavior() {
+        const unit = els.hintTextFontSizeUnit.value === "px" ? "px" : "em";
+        const max = unit === "px" ? 64 : 4;
+        const min = unit === "px" ? 1 : 0.1;
+        const step = unit === "px" ? 1 : 0.1;
+        const currentValue = clampNumber(
+            els.hintTextFontSizeValue.value,
+            min,
+            max,
+            unit === "px" ? 14 : 0.5
+        );
+
+        els.hintTextFontSizeValue.min = String(min);
+        els.hintTextFontSizeValue.max = String(max);
+        els.hintTextFontSizeValue.step = String(step);
+        els.hintTextFontSizeValue.value = unit === "px"
+            ? String(Math.round(currentValue))
+            : String(Math.round(currentValue * 10) / 10);
     }
 
     function refreshMeta(parsedDictionary) {
@@ -650,7 +671,7 @@
         const defaults = CCHShared.defaultSettings();
 
         return {
-            themeMode: els.optionsThemeMode.value || "system",
+            themeMode: themeModeFromControls(),
             selectionMode: els.selectionMode.value,
             enabled: els.enabled.checked,
             includeArpeggiates: els.includeArpeggiates.checked,
@@ -698,6 +719,22 @@
         return systemThemeQuery.matches ? "dark" : "light";
     }
 
+    function themeModeFromControls() {
+        if (els.optionsUseSystemTheme.checked) {
+            return "system";
+        }
+        return els.optionsThemeToggle.checked ? "dark" : "light";
+    }
+
+    function syncThemeControls(themeMode) {
+        const preference = themeMode || "system";
+        const resolvedTheme = resolveTheme(preference);
+
+        els.optionsUseSystemTheme.checked = preference === "system";
+        els.optionsThemeToggle.checked = resolvedTheme === "dark";
+        els.optionsThemeToggle.disabled = preference === "system";
+    }
+
     function applyOptionsTheme(themeMode) {
         const preference = themeMode || "system";
         const resolvedTheme = resolveTheme(preference);
@@ -707,7 +744,7 @@
     }
 
     function applySettingsToForm(settings) {
-        els.optionsThemeMode.value = settings.themeMode || "system";
+        syncThemeControls(settings.themeMode || "system");
         applyOptionsTheme(settings.themeMode || "system");
         els.selectionMode.value = settings.selectionMode;
         els.enabled.checked = settings.enabled;
@@ -727,6 +764,7 @@
 
         els.hintTextFontSizeValue.value = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em ?? 0.5;
         els.hintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
+        syncHintTextSizeFieldBehavior();
 
         els.descDupAll.value = settings.specialTokenDescriptions.dup_all || "";
         els.descDupLeft.value = settings.specialTokenDescriptions.dup_left || "";
@@ -1559,6 +1597,7 @@
     
     async function saveThemeModePreference(themeMode) {
         const nextThemeMode = themeMode || "system";
+        syncThemeControls(nextThemeMode);
         applyOptionsTheme(nextThemeMode);
 
         try {
@@ -1649,8 +1688,9 @@
     }
 
     systemThemeQuery.addEventListener("change", () => {
-        const preference = els.optionsThemeMode?.value || "system";
+        const preference = themeModeFromControls();
         if (preference === "system") {
+            syncThemeControls("system");
             applyOptionsTheme("system");
         }
     });
@@ -1658,9 +1698,14 @@
     els.importButton.addEventListener("click", importJson);
     els.syncDeviceButton.addEventListener("click", syncFromDevice);
     els.clearButton.addEventListener("click", clearDictionary);
-    els.optionsThemeMode.addEventListener("change", () => {
-        void saveThemeModePreference(els.optionsThemeMode.value);
-    });
+    function handleThemeControlsChanged() {
+        const themeMode = themeModeFromControls();
+        syncThemeControls(themeMode);
+        void saveThemeModePreference(themeMode);
+    }
+
+    els.optionsThemeToggle.addEventListener("change", handleThemeControlsChanged);
+    els.optionsUseSystemTheme.addEventListener("change", handleThemeControlsChanged);
     els.saveSettingsButton.addEventListener("click", saveSettings);
     if (els.saveSettingsButtonSecondary) els.saveSettingsButtonSecondary.addEventListener("click", saveSettings);
     if (els.returnToDefaultsButton) els.returnToDefaultsButton.addEventListener("click", resetSettingsToDefaults);
@@ -1738,11 +1783,15 @@
         els.hintBoxLightModeColor,
         els.hintBoxLightModeOpacity,
         els.hintTextLightModeColor,
-        els.hintTextFontSizeValue,
-        els.hintTextFontSizeUnit
+        els.hintTextFontSizeValue
     ].forEach((el) => {
         el.addEventListener("input", () => updateAppearancePreview(currentSettingsFromForm()));
         el.addEventListener("change", () => updateAppearancePreview(currentSettingsFromForm()));
+    });
+
+    els.hintTextFontSizeUnit.addEventListener("change", () => {
+        syncHintTextSizeFieldBehavior();
+        updateAppearancePreview(currentSettingsFromForm());
     });
 
     initializeCollapsibleSections();
