@@ -207,7 +207,6 @@
 
     els.popupSyncButton.addEventListener("click", () => {
         chrome.runtime.openOptionsPage();
-        window.close();
     });
 
     els.popupSaveButton.addEventListener("click", saveSettings);
