@@ -88,7 +88,6 @@
         editingStatus: document.getElementById("editingStatus"),
         sortInputButton: document.getElementById("sortInputButton"),
         sortOutputButton: document.getElementById("sortOutputButton"),
-        sortUnknownCompoundButton: document.getElementById("sortUnknownCompoundButton"),
         prevPageButton: document.getElementById("prevPageButton"),
         nextPageButton: document.getElementById("nextPageButton"),
         pageJumpInput: document.getElementById("pageJumpInput"),
@@ -338,8 +337,6 @@
                 return CCHShared.entryInputSortText(entry).toLowerCase();
             case "output":
                 return String(entry.outputText || "").toLowerCase();
-            case "unknown_compound":
-                return entry.flags.hasUnknownCompoundSegment ? "yes" : "no";
             case "index":
             default:
                 return Number(entry.index) || 0;
@@ -363,7 +360,7 @@
         if (currentSort.key === sortKey) {
             currentSort.direction = currentSort.direction === "asc" ? "desc" : "asc";
         } else {
-            currentSort = {key: sortKey, direction: sortKey === "unknown_compound" ? "desc" : "asc"};
+            currentSort = {key: sortKey, direction: "asc"};
         }
         currentPage = 1;
         renderLoadedChords(currentSettingsFromForm());
@@ -372,14 +369,12 @@
     function updateSortButtonLabels() {
         const labels = {
             input: "Input",
-            output: "Visible output",
-            unknown_compound: "Unknown compound?"
+            output: "Visible output"
         };
 
         [
             [els.sortInputButton, "input"],
-            [els.sortOutputButton, "output"],
-            [els.sortUnknownCompoundButton, "unknown_compound"]
+            [els.sortOutputButton, "output"]
         ].forEach(([button, key]) => {
             if (!button) return;
             const isActive = currentSort.key === key;
@@ -616,7 +611,7 @@
         if (!pageEntries.length) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = 3;
+            td.colSpan = 2;
             td.className = "muted";
             td.textContent = "No rows match the current filters.";
             tr.appendChild(td);
@@ -652,10 +647,6 @@
             output.textContent = entry.outputText || "";
             tdOutput.appendChild(output);
             tr.appendChild(tdOutput);
-
-            const tdUnknown = document.createElement("td");
-            tdUnknown.textContent = entry.flags.hasUnknownCompoundSegment ? "yes" : "no";
-            tr.appendChild(tdUnknown);
 
             els.loadedChordsTableBody.appendChild(tr);
         }
@@ -1043,24 +1034,84 @@
         });
     }
 
-    function collapseCompoundClusters(clusters) {
-        if (clusters.length <= 2) {
-            return clusters;
+    function buildUnknownCompoundSegment(clusterCodes) {
+        return {
+            kind: "unknown_compound",
+            inputCodes: Array.isArray(clusterCodes) ? clusterCodes.slice() : [],
+            inputTokens: [CCHShared.makePseudoSpecialToken("broken_image", "unknown compound segment")],
+            rawInput: CCHShared.UNKNOWN_COMPOUND_PLACEHOLDER,
+            editableText: "",
+            sortText: CCHShared.UNKNOWN_COMPOUND_PLACEHOLDER
+        };
+    }
+
+    function buildDecodedSegment(clusterCodes) {
+        if (isRenderableCompoundSegment(clusterCodes)) {
+            return {
+                kind: "decoded",
+                inputCodes: Array.isArray(clusterCodes) ? clusterCodes.slice() : []
+            };
         }
 
-        let trailingRenderableStart = clusters.length;
-        while (trailingRenderableStart > 0 && isRenderableCompoundSegment(clusters[trailingRenderableStart - 1])) {
+        return buildUnknownCompoundSegment(clusterCodes);
+    }
+
+    function findCompoundRenderableSuffixStart(rawClusters) {
+        const safeClusters = Array.isArray(rawClusters) ? rawClusters : [];
+        let trailingRenderableStart = safeClusters.length;
+
+        while (trailingRenderableStart > 0 && isRenderableCompoundSegment(safeClusters[trailingRenderableStart - 1])) {
             trailingRenderableStart -= 1;
         }
 
-        if (trailingRenderableStart <= 0 || trailingRenderableStart >= clusters.length) {
-            return clusters;
+        if (trailingRenderableStart <= 0 || trailingRenderableStart >= safeClusters.length) {
+            return -1;
         }
 
-        return [
-            clusters.slice(0, trailingRenderableStart).flat(),
-            clusters.slice(trailingRenderableStart).flat()
-        ];
+        return trailingRenderableStart;
+    }
+
+    function extractCompoundHashDescriptorFromPackedSlots(packedInputSlots) {
+        const rawClusters = splitCompoundInputClustersFromPackedSlots(packedInputSlots);
+        const suffixStart = findCompoundRenderableSuffixStart(rawClusters);
+        if (suffixStart === -1) {
+            return null;
+        }
+
+        const hashClusters = rawClusters.slice(0, suffixStart);
+        const tailCodes = rawClusters.slice(suffixStart).flat();
+        if (!tailCodes.length || !isRenderableCompoundSegment(tailCodes)) {
+            return null;
+        }
+
+        const parentHashChunks = [];
+        hashClusters.forEach((cluster, clusterIndex) => {
+            if (clusterIndex > 0) {
+                parentHashChunks.push(0);
+            }
+            parentHashChunks.push(...cluster);
+        });
+
+        const normalizedHashChunks = parentHashChunks.slice(0, 3);
+        while (normalizedHashChunks.length < 3) {
+            normalizedHashChunks.push(0);
+        }
+
+        if (!normalizedHashChunks.some((code) => code !== 0)) {
+            return null;
+        }
+
+        return {
+            rawClusters,
+            hashClusters,
+            suffixStart,
+            parentHashChunks: normalizedHashChunks,
+            parentHash:
+                normalizedHashChunks[0]
+                + (normalizedHashChunks[1] << 10)
+                + (normalizedHashChunks[2] << 20),
+            tailCodes: tailCodes.slice()
+        };
     }
 
     function buildDecodedInputSegments(decodedInput) {
@@ -1069,25 +1120,36 @@
             return [];
         }
 
-        const clusters = collapseCompoundClusters(rawClusters);
+        const suffixStart = findCompoundRenderableSuffixStart(rawClusters);
+        if (suffixStart !== -1) {
+            const unknownCodes = rawClusters.slice(0, suffixStart).flat();
+            const tailCodes = rawClusters.slice(suffixStart).flat();
 
-        return clusters.map((clusterCodes) => {
-            if (isRenderableCompoundSegment(clusterCodes)) {
-                return {
-                    kind: "decoded",
-                    inputCodes: clusterCodes
-                };
-            }
+            return [
+                buildUnknownCompoundSegment(unknownCodes),
+                buildDecodedSegment(tailCodes)
+            ].filter((segment) => Array.isArray(segment?.inputCodes) && segment.inputCodes.length);
+        }
 
+        return rawClusters.map((clusterCodes) => buildDecodedSegment(clusterCodes));
+    }
+
+    function extractSerializedInputActionCodes(packedInputSlots) {
+        const compoundDescriptor = extractCompoundHashDescriptorFromPackedSlots(packedInputSlots);
+        if (compoundDescriptor) {
             return {
-                kind: "unknown_compound",
-                inputCodes: clusterCodes,
-                inputTokens: [CCHShared.makePseudoSpecialToken("broken_image", "unknown compound segment")],
-                rawInput: CCHShared.UNKNOWN_COMPOUND_PLACEHOLDER,
-                editableText: "",
-                sortText: CCHShared.UNKNOWN_COMPOUND_PLACEHOLDER
+                serializedActionCodes: compoundDescriptor.parentHashChunks.concat(compoundDescriptor.tailCodes),
+                compoundDescriptor
             };
-        });
+        }
+
+        return {
+            serializedActionCodes: (Array.isArray(packedInputSlots) ? packedInputSlots : [])
+                .filter((code) => code !== 0)
+                .slice()
+                .reverse(),
+            compoundDescriptor: null
+        };
     }
 
     function decodeInputHex(inputHex) {
@@ -1102,13 +1164,16 @@
         const nonZeroPackedCodes = packedInputSlots.filter((code) => code !== 0);
         const ascendingInputCodes = nonZeroPackedCodes.slice().reverse();
         const compoundInputSegments = buildDecodedInputSegments({packedInputSlots});
+        const {serializedActionCodes, compoundDescriptor} = extractSerializedInputActionCodes(packedInputSlots);
 
         return {
             chainIndex,
             packedInputSlots,
             packedInputCodes: nonZeroPackedCodes,
             ascendingInputCodes,
-            compoundInputSegments
+            compoundInputSegments,
+            serializedActionCodes,
+            compoundDescriptor
         };
     }
 
@@ -1260,6 +1325,146 @@
         }
     }
 
+
+    function cloneInputSegment(segment) {
+        if (!segment || typeof segment !== "object") {
+            return null;
+        }
+
+        return {
+            index: Number.isFinite(segment.index) ? segment.index : undefined,
+            kind: typeof segment.kind === "string" ? segment.kind : "decoded",
+            inputCodes: Array.isArray(segment.inputCodes) ? segment.inputCodes.slice() : [],
+            inputTokens: Array.isArray(segment.inputTokens) ? segment.inputTokens.map((token) => ({...token})) : undefined,
+            rawInput: typeof segment.rawInput === "string" ? segment.rawInput : undefined,
+            editableText: typeof segment.editableText === "string" ? segment.editableText : undefined,
+            sortText: typeof segment.sortText === "string" ? segment.sortText : undefined
+        };
+    }
+
+    function cloneInputSegments(segments) {
+        return (Array.isArray(segments) ? segments : [])
+            .map((segment) => cloneInputSegment(segment))
+            .filter(Boolean);
+    }
+
+    function defaultResolvedSegmentsForSerialEntry(serialEntry) {
+        if (Array.isArray(serialEntry?.decodedInput?.compoundInputSegments) && serialEntry.decodedInput.compoundInputSegments.length) {
+            return cloneInputSegments(serialEntry.decodedInput.compoundInputSegments);
+        }
+
+        if (Array.isArray(serialEntry?.decodedInput?.ascendingInputCodes) && serialEntry.decodedInput.ascendingInputCodes.length) {
+            return [{
+                kind: "decoded",
+                inputCodes: serialEntry.decodedInput.ascendingInputCodes.slice()
+            }];
+        }
+
+        return [];
+    }
+
+    function inputSegmentTokenCount(segments) {
+        return (Array.isArray(segments) ? segments : []).reduce((total, segment) => {
+            if (Array.isArray(segment?.inputTokens) && segment.inputTokens.length) {
+                return total + segment.inputTokens.length;
+            }
+
+            if (Array.isArray(segment?.inputCodes) && segment.inputCodes.length) {
+                return total + segment.inputCodes.length;
+            }
+
+            return total;
+        }, 0);
+    }
+
+    function buildCompoundHashLookup(serialEntries) {
+        const lookup = new Map();
+
+        (Array.isArray(serialEntries) ? serialEntries : []).forEach((serialEntry) => {
+            const serializedActionCodes = Array.isArray(serialEntry?.decodedInput?.serializedActionCodes)
+                ? serialEntry.decodedInput.serializedActionCodes
+                : [];
+
+            if (!serializedActionCodes.length) {
+                return;
+            }
+
+            const hash = CCHShared.hashChord(serializedActionCodes);
+            serialEntry.serialInputHash = hash;
+
+            if (!lookup.has(hash)) {
+                lookup.set(hash, []);
+            }
+
+            lookup.get(hash).push(serialEntry);
+        });
+
+        return lookup;
+    }
+
+    function resolveSerialEntrySegments(serialEntry, hashLookup, memo = new Map(), resolutionStack = new Set()) {
+        if (!serialEntry) {
+            return [];
+        }
+
+        if (memo.has(serialEntry.index)) {
+            return cloneInputSegments(memo.get(serialEntry.index));
+        }
+
+        if (resolutionStack.has(serialEntry.index)) {
+            return defaultResolvedSegmentsForSerialEntry(serialEntry);
+        }
+
+        resolutionStack.add(serialEntry.index);
+
+        let resolvedSegments = defaultResolvedSegmentsForSerialEntry(serialEntry);
+        const compoundDescriptor = serialEntry.decodedInput?.compoundDescriptor || null;
+
+        if (compoundDescriptor?.parentHash && Array.isArray(compoundDescriptor.tailCodes) && compoundDescriptor.tailCodes.length) {
+            const candidates = (hashLookup.get(compoundDescriptor.parentHash) || [])
+                .filter((candidate) => candidate && candidate.index !== serialEntry.index)
+                .slice()
+                .sort((a, b) => {
+                    const aCount = inputSegmentTokenCount(defaultResolvedSegmentsForSerialEntry(a));
+                    const bCount = inputSegmentTokenCount(defaultResolvedSegmentsForSerialEntry(b));
+                    if (aCount !== bCount) {
+                        return aCount - bCount;
+                    }
+                    return (a.index ?? 0) - (b.index ?? 0);
+                });
+
+            const parentEntry = candidates[0] || null;
+            if (parentEntry) {
+                const parentSegments = resolveSerialEntrySegments(parentEntry, hashLookup, memo, resolutionStack);
+                if (parentSegments.length) {
+                    resolvedSegments = parentSegments.concat([{
+                        kind: "decoded",
+                        inputCodes: compoundDescriptor.tailCodes.slice()
+                    }]);
+                }
+
+                console.log("[CCH serial] resolved compound parent hash", {
+                    index: serialEntry.index,
+                    parentHash: compoundDescriptor.parentHash,
+                    parentHashChunks: compoundDescriptor.parentHashChunks,
+                    parentMatchIndex: parentEntry.index,
+                    tailCodes: compoundDescriptor.tailCodes
+                });
+            } else {
+                console.log("[CCH serial] unresolved compound parent hash", {
+                    index: serialEntry.index,
+                    parentHash: compoundDescriptor.parentHash,
+                    parentHashChunks: compoundDescriptor.parentHashChunks,
+                    tailCodes: compoundDescriptor.tailCodes
+                });
+            }
+        }
+
+        memo.set(serialEntry.index, cloneInputSegments(resolvedSegments));
+        resolutionStack.delete(serialEntry.index);
+        return cloneInputSegments(resolvedSegments);
+    }
+
     async function fetchSerialChordmapDictionary() {
         if (!navigator.serial) {
             throw new Error("Web Serial is not available in this browser context.");
@@ -1287,7 +1492,7 @@
             }
 
             console.log("[CCH serial] chordmap count", entryCount);
-            const entries = [];
+            const serialEntries = [];
 
             for (let index = 0; index < entryCount; index += 1) {
                 if (index === 0 || index % 25 === 0 || index === entryCount - 1) {
@@ -1325,25 +1530,34 @@
                         zeroSlotIndices: inputAnalysis.zeroSlotIndices,
                         clusters: inputAnalysis.clusters,
                         displayHypotheses: inputAnalysis.displayHypotheses,
+                        serializedActionCodes: decodedInput.serializedActionCodes,
+                        compoundDescriptor: decodedInput.compoundDescriptor,
                         outputCodes,
                         visibleOutputText: CCHShared.visibleOutputText(outputCodes)
                     });
                 }
 
-                entries.push(
-                    CCHShared.buildEntry({
-                        index: parsed.index,
-                        inputCodes: decodedInput.ascendingInputCodes,
-                        inputSegments: decodedInput.compoundInputSegments.length ? decodedInput.compoundInputSegments : null,
-                        packedInputCodes: decodedInput.packedInputCodes,
-                        outputCodes,
-                        inputHex: parsed.inputHex,
-                        outputHex: parsed.outputHex,
-                        status: parsed.status,
-                        userFlags: {displayEnabled: true}
-                    })
-                );
+                serialEntries.push({
+                    index: parsed.index,
+                    parsed,
+                    decodedInput,
+                    outputCodes
+                });
             }
+
+            const hashLookup = buildCompoundHashLookup(serialEntries);
+            const resolvedSegmentMemo = new Map();
+            const entries = serialEntries.map((serialEntry) => CCHShared.buildEntry({
+                index: serialEntry.parsed.index,
+                inputCodes: serialEntry.decodedInput.ascendingInputCodes,
+                inputSegments: resolveSerialEntrySegments(serialEntry, hashLookup, resolvedSegmentMemo),
+                packedInputCodes: serialEntry.decodedInput.packedInputCodes,
+                outputCodes: serialEntry.outputCodes,
+                inputHex: serialEntry.parsed.inputHex,
+                outputHex: serialEntry.parsed.outputHex,
+                status: serialEntry.parsed.status,
+                userFlags: {displayEnabled: true}
+            }));
 
             return CCHShared.buildParsedDictionary({
                 entries,
@@ -1730,7 +1944,6 @@
     });
     els.sortInputButton.addEventListener("click", () => setSort("input"));
     els.sortOutputButton.addEventListener("click", () => setSort("output"));
-    els.sortUnknownCompoundButton.addEventListener("click", () => setSort("unknown_compound"));
 
     els.prevPageButton.addEventListener("click", () => {
         goToPage(currentPage - 1);

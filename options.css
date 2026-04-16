@@ -446,14 +446,43 @@ button:disabled {
 }
 
 .searchRow th {
-  text-align: center;
+  text-align: left;
   padding-bottom: 8px;
+  z-index: 3;
+}
+
+.columnSearchField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  z-index: 4;
 }
 
 .columnSearch {
+  width: min(260px, 100%);
   max-width: 260px;
-  margin: 0 auto;
-  text-align: center;
+  margin: 0;
+  text-align: left;
+}
+
+.columnSearchTooltip {
+  flex: 0 0 auto;
+  z-index: 5;
+}
+
+.columnSearchTooltip::after {
+  left: 0;
+  top: calc(100% + 8px);
+  z-index: 999;
+}
+
+.tableWrap {
+  overflow: visible;
+}
+
+td {
+  overflow: hidden;
 }
 
 /*:root {*/
@@ -879,4 +908,80 @@ input[type="color"]::-moz-color-swatch {
   to {
     transform: scale(1.02);
   }
+}
+
+
+.kofiLink {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  line-height: 0;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.kofiLink img {
+  display: block;
+  height: auto;
+  max-width: min(180px, 100%);
+}
+
+.kofiLinkInline {
+  margin-left: auto;
+}
+
+.kofiLinkInline img {
+  width: min(280px, 100%);
+}
+
+.kofiSection {
+  display: flex;
+  justify-content: flex-start;
+  padding-top:1rem; 
+  border-top: 2px solid var(--cch-border-soft);
+  margin-top: 2rem;
+}
+
+.kofiLinkStandalone {
+  justify-content: center;
+  width: 100%;
+}
+
+.kofiLinkStandalone img {
+  width: min(420px, 100%);
+}
+
+@media (max-width: 760px) {
+  .kofiLinkInline {
+    margin-left: 0;
+  }
+
+  .kofiLinkInline img,
+  .kofiLinkStandalone img {
+    width: 100%;
+  }
+}
+
+
+.columnSearchField {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.columnSearch {
+  width: min(260px, 100%);
+  max-width: 260px;
+  margin: 0;
+  text-align: left;
+}
+
+.columnSearchTooltip {
+  flex: 0 0 auto;
+}
+
+.columnSearchTooltip::after {
+  left: 0;
+  top: calc(100% + 8px);
 }

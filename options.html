@@ -78,17 +78,35 @@
             <thead>
               <tr class="searchRow">
                 <th>
-                  <input id="inputSearchBox" type="search" class="columnSearch" placeholder="Search input characters">
+                  <div class="columnSearchField">
+                    <input id="inputSearchBox" type="search" class="columnSearch" placeholder="Search input characters">
+                    <span
+                      class="tooltipable columnSearchTooltip"
+                      data-tooltip="Search input characters in any order. For example, entering tn will match inputs that contain both t and n, even if the stored order is different."
+                      tabindex="0"
+                      aria-label="Input search help"
+                    >
+                      <span class="tooltipIcon" aria-hidden="true"></span>
+                    </span>
+                  </div>
                 </th>
                 <th>
-                  <input id="outputSearchBox" type="search" class="columnSearch" placeholder="Search output text">
+                  <div class="columnSearchField">
+                    <input id="outputSearchBox" type="search" class="columnSearch" placeholder="Search output text">
+                    <span
+                      class="tooltipable columnSearchTooltip"
+                      data-tooltip="Search visible output text as a normal text string. Matches are based on the output text itself."
+                      tabindex="0"
+                      aria-label="Output search help"
+                    >
+                      <span class="tooltipIcon" aria-hidden="true"></span>
+                    </span>
+                  </div>
                 </th>
-                <th></th>
               </tr>
               <tr>
                 <th><button id="sortInputButton" type="button" class="sortButton">Input</button></th>
                 <th><button id="sortOutputButton" type="button" class="sortButton">Visible output</button></th>
-                <th><button id="sortUnknownCompoundButton" type="button" class="sortButton">Unknown compound?</button></th>
               </tr>
             </thead>
             <tbody id="loadedChordsTableBody"></tbody>
@@ -214,6 +232,12 @@
         <button id="returnToDefaultsButton" type="button" class="secondary">Return to defaults</button>
         <span id="settingsStatus" class="status"></span>
       </div>
+    </section>
+
+    <section class="kofiSection">
+      <a class="kofiLink kofiLinkStandalone" href="https://ko-fi.com/itsdaijoebu" target="_blank" rel="noopener noreferrer" aria-label="Support me on Ko-fi">
+        <img src="images/kofi_button.png" alt="Support me on Ko-fi">
+      </a>
     </section>
   </main>
 
