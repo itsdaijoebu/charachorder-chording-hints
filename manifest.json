@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Entertrained Charachorder Hints",
-  "version": "0.3.1",
+  "version": "0.9.0",
   "description": "Shows Charachorder chord hints above words on Entertrained typing practice pages.",
   "permissions": ["storage"],
   "host_permissions": ["https://entertrained.app/prompt/*"],
