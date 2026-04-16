@@ -4,17 +4,128 @@
   const SERIAL_ENTRY_TIMEOUT_MS = 2000;
 
   const SERIAL_OUTPUT_ACTION_LABELS = {
-    256: "suppress_auto_space",
+    256: "inhibit_concatenator",
+
+    296: "enter",
+    297: "escape",
     298: "backspace",
+    299: "tab",
+
+    313: "caps_lock",
+
+    314: "f1",
+    315: "f2",
+    316: "f3",
+    317: "f4",
+    318: "f5",
+    319: "f6",
+    320: "f7",
+    321: "f8",
+    322: "f9",
+    323: "f10",
+    324: "f11",
+    325: "f12",
+
+    330: "home",
+    331: "page_up",
+    333: "end",
+    334: "page_down",
+    335: "right_arrow",
     336: "left_arrow",
+    337: "down_arrow",
+    338: "up_arrow",
+
+    360: "f13",
+    361: "f14",
+    362: "f15",
+    363: "f16",
+    364: "f17",
+    365: "f18",
+    366: "f19",
+    367: "f20",
+    368: "f21",
+    369: "f22",
+    370: "f23",
+    371: "f24",
+
+    512: "left_ctrl",
     513: "left_shift",
+    514: "left_alt",
+    515: "left_gui",
+    516: "right_ctrl",
     517: "right_shift",
+    518: "right_alt",
+    519: "right_gui",
+
+    523: "press_next",
+    524: "release_next",
+
+    531: "vim",
+    532: "gtm",
     533: "dup_right",
+    534: "impulse",
     535: "dup_all",
     536: "dup_left",
+    538: "spur",
+
+    540: "ambileft_left",
+    542: "ambiright_right",
+
+    545: "hyperspace",
+    547: "hyperspace_capture",
+
+    548: "layer1_left",
+    549: "layer1_right",
+    550: "layer2_left",
+    551: "layer2_right",
+    552: "layer3_left",
+    553: "layer3_right",
+    554: "layer4_left",
+    555: "layer4_right",
+
+    558: "hold_compound",
+    559: "release_compound",
+
+    560: "mouse_backward_click",
+    561: "mouse_forward_click",
+    562: "mouse_left_click",
+    563: "mouse_right_click",
+    564: "mouse_middle_click",
+    565: "mouse_move_right",
+    566: "mouse_move_left",
+    567: "mouse_move_down",
+    568: "mouse_move_up",
+    569: "mouse_scroll_right",
+    570: "mouse_scroll_left",
+    571: "mouse_scroll_down",
+    572: "mouse_scroll_up",
+
     573: "capitalize",
-    574: "remove_preceding_space",
-    1001: "arpeggiate"
+    574: "join",
+    575: "quickfix",
+    576: "active_quickfix",
+    577: "delay_100",
+    578: "delay_10",
+    579: "delay_1",
+
+    589: "spin_pan_north",
+    590: "spin_pan_east",
+    591: "spin_pan_south",
+    592: "spin_pan_west",
+    593: "spin_scroll_north",
+    594: "spin_scroll_east",
+    595: "spin_scroll_south",
+    596: "spin_scroll_west",
+
+    597: "delay_500",
+    598: "delay_1000",
+
+    650: "profile_a",
+    651: "profile_b",
+    652: "profile_c",
+
+    1001: "arpeggiate",
+    1002: "tap_dance"
   };
 
   function sleep(ms) {
