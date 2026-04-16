@@ -73,9 +73,16 @@ h2 {
 }
 
 .popupActionsRow {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    /*display: flex;*/
+    /*flex-wrap: wrap;*/
+    /*gap: 8px;*/
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    justify-items: center;
+}
+.popupActionsRow > button {
+    width: 75%;
 }
 
 button {
@@ -264,7 +271,8 @@ button.secondary:hover {
     border-radius: 12px;
     padding: 8px;
     display: grid;
-    gap: 6px;
+    /*gap: 6px;*/
+    font-size: 2rem;
 }
 
 .popupPreviewPanelLight {
@@ -278,19 +286,15 @@ button.secondary:hover {
 }
 
 .popupPreviewLabel {
-    font-size: 0.82rem;
     font-weight: 600;
     text-align: center;
 }
 
 .popupPreviewCanvas {
-    min-height: 42px;
     border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 6px;
-    font-size: 2rem;
 }
 
 .popupPreviewHint {
@@ -348,4 +352,8 @@ button.secondary:hover {
     background-color: currentColor;
     -webkit-mask: url("icons/power.svg") center / contain no-repeat;
     mask: url("icons/power.svg") center / contain no-repeat;
+}
+
+.popupSaveSettingsCard {
+    margin-top: 7px;
 }
