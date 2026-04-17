@@ -229,69 +229,6 @@
         return null;
     }
 
-    function parsePixelValue(value) {
-        const parsed = Number.parseFloat(String(value ?? "").trim());
-        return Number.isFinite(parsed) ? parsed : 0;
-    }
-
-    function getMonkeytypeWordsWrapper() {
-        const wrapper = document.querySelector("#wordsWrapper, #wordWrapper");
-        return wrapper instanceof HTMLElement ? wrapper : null;
-    }
-
-    function ensureMonkeytypeLayoutReserveSpace() {
-        const adapter = currentSiteAdapter();
-        if (adapter?.key !== "monkeytype") return false;
-
-        const wrapper = getMonkeytypeWordsWrapper();
-        const container = adapter.getPromptContainer();
-
-        if (!(wrapper instanceof HTMLElement) || !(container instanceof HTMLElement)) {
-            return false;
-        }
-
-        const labels = Array.from(container.querySelectorAll(".cch-hint-label"))
-            .filter((el) => el instanceof HTMLElement);
-
-        const measuredLabelHeight = labels.length
-            ? Math.max(...labels.map((label) => label.getBoundingClientRect().height))
-            : 0;
-
-        const reservePx = Math.max(0, Math.min(64, Math.ceil(measuredLabelHeight + 6)));
-        const previouslyApplied = parsePixelValue(wrapper.dataset.cchReserveTopPx);
-
-        if (Math.abs(previouslyApplied - reservePx) < 1) {
-            return false;
-        }
-
-        if (wrapper.dataset.cchBasePaddingTopPx == null) {
-            wrapper.dataset.cchBasePaddingTopPx = String(parsePixelValue(getComputedStyle(wrapper).paddingTop));
-        }
-
-        if (wrapper.dataset.cchBaseHeightPx == null) {
-            wrapper.dataset.cchBaseHeightPx = String(parsePixelValue(getComputedStyle(wrapper).height));
-        }
-
-        const basePaddingTop = parsePixelValue(wrapper.dataset.cchBasePaddingTopPx);
-        const baseHeight = parsePixelValue(wrapper.dataset.cchBaseHeightPx);
-
-        wrapper.style.paddingTop = `${basePaddingTop + reservePx}px`;
-
-        if (baseHeight > 0) {
-            wrapper.style.height = `${baseHeight + reservePx}px`;
-        }
-
-        wrapper.dataset.cchReserveTopPx = String(reservePx);
-
-        log("Adjusted Monkeytype wrapper layout", {
-            reservePx,
-            basePaddingTop,
-            baseHeight
-        });
-
-        return true;
-    }
-
     function hexToRgba(hex, opacity) {
         const safeHex = String(hex || "").trim();
         const safeOpacity = Math.max(0, Math.min(1, Number(opacity) || 1));
@@ -692,14 +629,7 @@
             return;
         }
 
-        let summaries = paragraphs.map((paragraph, index) => annotateParagraph(paragraph, index));
-
-        if (ensureMonkeytypeLayoutReserveSpace()) {
-            const refreshedParagraphs = getParagraphBoxes();
-            STATE.trackedParagraphs = refreshedParagraphs;
-            summaries = refreshedParagraphs.map((paragraph, index) => annotateParagraph(paragraph, index));
-        }
-
+        const summaries = paragraphs.map((paragraph, index) => annotateParagraph(paragraph, index));
         const totalWords = summaries.reduce((sum, item) => sum + item.wordCount, 0);
         const totalMatches = summaries.reduce((sum, item) => sum + item.matchedCount, 0);
 
@@ -707,7 +637,7 @@
 
         log("Annotation pass complete", {
             site: adapter.key,
-            paragraphCount: STATE.trackedParagraphs.length,
+            paragraphCount: paragraphs.length,
             totalWords,
             totalMatches,
             entryCount: STATE.dictionary.entryCount,
