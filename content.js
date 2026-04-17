@@ -5,7 +5,6 @@
         settings: "settings"
     };
 
-
     const STATE = {
         dictionary: null,
         settings: CCHShared.defaultSettings(),
@@ -21,6 +20,130 @@
         maxLookupWordCount: 1
     };
 
+    const SITE_ADAPTERS = [
+        {
+            key: "entertrained",
+            matchesLocation() {
+                return (
+                    location.hostname === "entertrained.app" &&
+                    location.pathname.startsWith("/prompt/")
+                );
+            },
+            getPromptContainer() {
+                const container = document.querySelector(".paragraphs");
+                return container instanceof HTMLElement ? container : null;
+            },
+            getParagraphBoxes(container) {
+                if (!(container instanceof HTMLElement)) return [];
+
+                return Array.from(container.querySelectorAll(":scope > .p-box"))
+                    .filter((el) => el instanceof HTMLElement)
+                    .filter(isVisible);
+            },
+            getWordElements(paragraph) {
+                if (!(paragraph instanceof HTMLElement)) return [];
+
+                return Array.from(paragraph.querySelectorAll(":scope > p > .word"))
+                    .filter((el) => el instanceof HTMLElement)
+                    .filter(isVisible);
+            },
+            buildPromptSignature(paragraphs) {
+                const normalizedParagraphs = paragraphs.map((paragraph) =>
+                    (paragraph.textContent || "")
+                        .replace(/\s+/g, " ")
+                        .trim()
+                );
+
+                const totalWords = paragraphs.reduce(
+                    (sum, paragraph) => sum + this.getWordElements(paragraph).length,
+                    0
+                );
+
+                return JSON.stringify({
+                    site: this.key,
+                    paragraphCount: paragraphs.length,
+                    totalWords,
+                    text: normalizedParagraphs.join("\n")
+                });
+            },
+            observerConfig() {
+                return {
+                    subtree: true,
+                    childList: true,
+                    characterData: true,
+                    attributes: false
+                };
+            },
+            mutationIsRelevant(mutation) {
+                return mutation.type === "childList" || mutation.type === "characterData";
+            }
+        },
+        {
+            key: "monkeytype",
+            matchesLocation() {
+                return location.hostname === "monkeytype.com" && /^\/?$/.test(location.pathname);
+            },
+            getPromptContainer() {
+                const container = document.querySelector("#wordsWrapper > #words")
+                    || document.querySelector("#typingTest #words")
+                    || document.querySelector("#words");
+                return container instanceof HTMLElement ? container : null;
+            },
+            getParagraphBoxes(container) {
+                if (!(container instanceof HTMLElement) || !isVisible(container)) return [];
+                return [container];
+            },
+            getWordElements(container) {
+                if (!(container instanceof HTMLElement)) return [];
+
+                const words = Array.from(container.querySelectorAll(":scope > .word"))
+                    .filter((el) => el instanceof HTMLElement)
+                    .filter(isVisible);
+
+                return filterWordsToContainerViewport(words, container);
+            },
+            buildPromptSignature(paragraphs) {
+                const container = paragraphs[0];
+                if (!(container instanceof HTMLElement)) {
+                    return JSON.stringify({
+                        site: this.key,
+                        visibleWordCount: 0,
+                        text: ""
+                    });
+                }
+
+                const words = this.getWordElements(container);
+                const texts = words.map((word) =>
+                    (word.textContent || "")
+                        .replace(/\s+/g, " ")
+                        .trim()
+                );
+
+                const firstWordIndex = readMonkeytypeWordIndex(words[0]);
+                const lastWordIndex = readMonkeytypeWordIndex(words[words.length - 1]);
+
+                return JSON.stringify({
+                    site: this.key,
+                    visibleWordCount: words.length,
+                    firstWordIndex,
+                    lastWordIndex,
+                    text: texts.join(" ")
+                });
+            },
+            observerConfig() {
+                return {
+                    subtree: true,
+                    childList: true,
+                    characterData: true,
+                    attributes: false
+                };
+            },
+            mutationIsRelevant(mutation) {
+                return mutation.type === "childList" || mutation.type === "characterData";
+            }
+        }
+    ];
+
     function log(...args) {
         if (!STATE.settings.debugLogging) return;
         console.log("[CCH]", ...args);
@@ -28,10 +151,6 @@
 
     function getStorage(keys) {
         return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
-    }
-
-    function setStorage(values) {
-        return new Promise((resolve) => chrome.storage.local.set(values, resolve));
     }
 
     function hydrateSettings(rawSettings) {
@@ -50,6 +169,10 @@
         return merged;
     }
 
+    function currentSiteAdapter() {
+        return SITE_ADAPTERS.find((adapter) => adapter.matchesLocation()) || null;
+    }
+
     function isVisible(el) {
         if (!(el instanceof HTMLElement)) return false;
         if (!el.isConnected) return false;
@@ -61,6 +184,49 @@
 
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
+    }
+
+    function rectsIntersect(a, b) {
+        return (
+            a.right > b.left &&
+            a.left < b.right &&
+            a.bottom > b.top &&
+            a.top < b.bottom
+        );
+    }
+
+    function filterWordsToContainerViewport(words, container) {
+        if (!(container instanceof HTMLElement)) return words;
+
+        const containerRect = container.getBoundingClientRect();
+        if (containerRect.width <= 0 || containerRect.height <= 0) {
+            return [];
+        }
+
+        return words.filter((word) => rectsIntersect(word.getBoundingClientRect(), containerRect));
+    }
+
+    function readMonkeytypeWordIndex(word) {
+        if (!(word instanceof HTMLElement)) return null;
+
+        const candidates = [
+            word.dataset.wordindex,
+            word.dataset.wordIndex,
+            word.dataset.woriindex,
+            word.dataset.woriIndex,
+            word.getAttribute("data-wordindex"),
+            word.getAttribute("data-woriindex")
+        ];
+
+        for (const candidate of candidates) {
+            if (candidate == null || candidate === "") continue;
+
+            const parsed = Number(candidate);
+            if (Number.isFinite(parsed)) return parsed;
+            return String(candidate);
+        }
+
+        return null;
     }
 
     function hexToRgba(hex, opacity) {
@@ -122,45 +288,31 @@
     }
 
     function getPromptContainer() {
-        const container = document.querySelector(".paragraphs");
-        return container instanceof HTMLElement ? container : null;
+        const adapter = currentSiteAdapter();
+        return adapter?.getPromptContainer() || null;
     }
 
     function getParagraphBoxes() {
-        const container = getPromptContainer();
-        if (!container) return [];
+        const adapter = currentSiteAdapter();
+        if (!adapter) return [];
 
-        return Array.from(container.querySelectorAll(":scope > .p-box"))
-            .filter((el) => el instanceof HTMLElement)
-            .filter(isVisible);
+        const container = adapter.getPromptContainer();
+        return adapter.getParagraphBoxes(container);
     }
 
     function getWordElements(paragraph) {
-        if (!(paragraph instanceof HTMLElement)) return [];
+        const adapter = currentSiteAdapter();
+        if (!adapter) return [];
 
-        return Array.from(paragraph.querySelectorAll(":scope > p > .word"))
-            .filter((el) => el instanceof HTMLElement)
-            .filter(isVisible);
+        return adapter.getWordElements(paragraph);
     }
 
     function buildPromptSignature() {
+        const adapter = currentSiteAdapter();
+        if (!adapter) return "";
+
         const paragraphs = getParagraphBoxes();
-        const normalizedParagraphs = paragraphs.map((paragraph) =>
-            (paragraph.textContent || "")
-                .replace(/\s+/g, " ")
-                .trim()
-        );
-
-        const totalWords = paragraphs.reduce(
-            (sum, paragraph) => sum + getWordElements(paragraph).length,
-            0
-        );
-
-        return JSON.stringify({
-            paragraphCount: paragraphs.length,
-            totalWords,
-            text: normalizedParagraphs.join("\n")
-        });
+        return adapter.buildPromptSignature(paragraphs);
     }
 
     function clearAnnotationsWithin(root) {
@@ -388,7 +540,7 @@
 
         const words = getWordElements(paragraph);
         const activeWords = words.filter((word) => word.classList.contains("active")).length;
-        const letterCurrentCount = paragraph.querySelectorAll(".letter.current").length;
+        const letterCurrentCount = paragraph.querySelectorAll(".letter.current, letter.current").length;
 
         const matches = [];
         const misses = [];
@@ -404,6 +556,7 @@
         }
 
         const summary = {
+            site: currentSiteAdapter()?.key || "unknown",
             paragraphIndex,
             wordCount: words.length,
             activeWordCount: activeWords,
@@ -443,10 +596,23 @@
             return;
         }
 
+        const adapter = currentSiteAdapter();
+        if (!adapter) {
+            STATE.trackedParagraphs.forEach(clearAnnotationsWithin);
+            STATE.trackedParagraphs = [];
+            STATE.lastPromptSignature = "";
+            log("No active site adapter for current page", {
+                hostname: location.hostname,
+                pathname: location.pathname
+            });
+            return;
+        }
+
         const paragraphs = getParagraphBoxes();
         STATE.trackedParagraphs = paragraphs;
 
         log("Paragraph discovery", {
+            site: adapter.key,
             paragraphCount: paragraphs.length,
             paragraphSamples: paragraphs.slice(0, 5).map((paragraph, index) => ({
                 paragraphIndex: index,
@@ -459,7 +625,7 @@
         if (!paragraphs.length) {
             STATE.lastPromptSignature = buildPromptSignature();
             STATE.trackedParagraphs = [];
-            log("No .p-box paragraphs found");
+            log("No prompt containers/paragraphs found for current adapter", { site: adapter.key });
             return;
         }
 
@@ -470,6 +636,7 @@
         STATE.lastPromptSignature = buildPromptSignature();
 
         log("Annotation pass complete", {
+            site: adapter.key,
             paragraphCount: paragraphs.length,
             totalWords,
             totalMatches,
@@ -533,11 +700,18 @@
             STATE.promptObserver.disconnect();
         }
 
+        const adapter = currentSiteAdapter();
+        if (!adapter || !(container instanceof HTMLElement)) {
+            STATE.promptObserver = null;
+            STATE.observedPromptContainer = null;
+            return;
+        }
+
         STATE.promptObserver = new MutationObserver((mutations) => {
             let sawRelevantChange = false;
 
             for (const mutation of mutations) {
-                if (mutation.type === "childList" || mutation.type === "characterData") {
+                if (adapter.mutationIsRelevant(mutation)) {
                     sawRelevantChange = true;
                     break;
                 }
@@ -547,15 +721,13 @@
             handlePotentialPromptChange("prompt-container-mutation");
         });
 
-        STATE.promptObserver.observe(container, {
-            subtree: true,
-            childList: true,
-            characterData: true,
-            attributes: false
-        });
+        STATE.promptObserver.observe(container, adapter.observerConfig());
 
         STATE.observedPromptContainer = container;
-        log("Observing .paragraphs container", container);
+        log("Observing prompt container", {
+            site: adapter.key,
+            container
+        });
     }
 
     function ensurePromptObserverTarget() {
@@ -630,6 +802,7 @@
             event.code === hotkey.code
         );
     }
+
     function installHotkeys() {
         document.addEventListener(
             "keydown",
@@ -650,7 +823,6 @@
             true
         );
     }
-
 
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "local") return;
@@ -680,6 +852,11 @@
 
     async function init() {
         await loadState();
+        log("Active adapter at init", {
+            site: currentSiteAdapter()?.key || null,
+            hostname: location.hostname,
+            pathname: location.pathname
+        });
         installContainerObserver();
         installHotkeys();
         scheduleAnnotation(true);
