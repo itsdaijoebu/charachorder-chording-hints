@@ -27,7 +27,7 @@ Until then, you can download the repo (unzipping it if necessary, depending on h
 
 ## Usage
 1. Go to any supported website
-2. Start a typing test
+2. Start a typing thingy (practice, test, whatever)
 3. See the chording hints!
 4. If you don't see the hints, click on the extension icon in your toolbar and make sure it's on (the Power button should be green).
 
