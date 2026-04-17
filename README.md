@@ -5,8 +5,8 @@ Chrome extension that loads Charachorder chords to an internal library, either v
 Currently works with:
 - [Entertrained](https://www.entertrained.app)
 
-<img src="readme_images/cch-hero.png" alt="main-promo-image" width="480">
-<img src="readme_images/cch-splitscreen.png" alt="splitscreen-promo-image" width="480">
+<img src="readme_images/cch-hero.png" alt="main-promo-image" width="640">
+<img src="readme_images/cch-splitscreen.png" alt="splitscreen-promo-image" width="640">
 
 
 ## Installation
