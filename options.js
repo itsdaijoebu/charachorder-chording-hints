@@ -18,6 +18,7 @@
     let expandedEditorRows = new Set();
     let draftInputEdits = {};
     let hideBlankOutputs = true;
+    let hideNonAlphanumericOutputs = true;
     let inputSearchQuery = "";
     let outputSearchQuery = "";
     let saveButtonsResetTimer = null;
@@ -83,6 +84,7 @@
         saveInputOverrideButton: document.getElementById("saveInputOverrideButton"),
         revertInputOverrideButton: document.getElementById("revertInputOverrideButton"),
         hideBlankOutputsToggle: document.getElementById("hideBlankOutputsToggle"),
+        hideNonAlphanumericOutputsToggle: document.getElementById("hideNonAlphanumericOutputsToggle"),
         inputSearchBox: document.getElementById("inputSearchBox"),
         outputSearchBox: document.getElementById("outputSearchBox"),
         editingStatus: document.getElementById("editingStatus"),
@@ -122,10 +124,10 @@
         331: "page_up",
         333: "end",
         334: "page_down",
-        335: "right_arrow",
-        336: "left_arrow",
-        337: "down_arrow",
-        338: "up_arrow",
+        335: "kbright",
+        336: "kbleft",
+        337: "kbdown",
+        338: "kbup",
 
         360: "f13",
         361: "f14",
@@ -183,14 +185,14 @@
         562: "mouse_left_click",
         563: "mouse_right_click",
         564: "mouse_middle_click",
-        565: "mouse_move_right",
-        566: "mouse_move_left",
-        567: "mouse_move_down",
-        568: "mouse_move_up",
-        569: "mouse_scroll_right",
-        570: "mouse_scroll_left",
-        571: "mouse_scroll_down",
-        572: "mouse_scroll_up",
+        565: "mouse_moveright",
+        566: "mouse_moveleft",
+        567: "mouse_movedown",
+        568: "mouse_moveup",
+        569: "mouse_scrollright",
+        570: "mouse_scrollleft",
+        571: "mouse_scrolldown",
+        572: "mouse_scrollup",
 
         573: "capitalize",
         574: "join",
@@ -217,7 +219,7 @@
         652: "profile_c",
 
         1001: "arpeggiate",
-        1002: "tap_dance"
+        1002: "tapdance"
     };
 
 
@@ -442,6 +444,81 @@
         return wrapper;
     }
 
+    function outputActionLabelForCode(code) {
+        return SERIAL_OUTPUT_ACTION_LABELS[code] || "";
+    }
+
+    function outputTokenForCode(code) {
+        if (code >= 32 && code <= 126) {
+            return {type: "char", char: String.fromCharCode(code)};
+        }
+
+        const label = outputActionLabelForCode(code);
+        if (label) {
+            return CCHShared.makePseudoSpecialToken(label, label);
+        }
+
+        return CCHShared.makePseudoSpecialToken("broken_image", `Action Code ${code}`);
+    }
+
+    function outputPreviewTokens(entry) {
+        return (Array.isArray(entry?.outputCodes) ? entry.outputCodes : [])
+            .map((code) => outputTokenForCode(code))
+            .filter(Boolean);
+    }
+
+    function entryHasRenderableOutput(entry) {
+        return outputPreviewTokens(entry).length > 0;
+    }
+
+    function visibleOutputCharacters(entry) {
+        const tokens = outputPreviewTokens(entry);
+        if (tokens.length) {
+            return tokens
+                .filter((token) => token?.type === "char")
+                .map((token) => token.char)
+                .join("");
+        }
+
+        return String(entry?.outputText || "");
+    }
+
+    function entryHasCharacterOutput(entry) {
+        return visibleOutputCharacters(entry).length > 0;
+    }
+
+    function renderOutputPreview(entry, settings) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "hintPreview";
+
+        const row = document.createElement("div");
+        row.className = "hintPreviewRow";
+
+        const tokens = outputPreviewTokens(entry);
+        const visibleTokens = hideNonAlphanumericOutputs
+            ? tokens.filter((token) => token?.type === "char")
+            : tokens;
+
+        if (!visibleTokens.length) {
+            const fallbackText = hideNonAlphanumericOutputs
+                ? visibleOutputCharacters(entry)
+                : String(entry.outputText || "");
+
+            if (fallbackText) {
+                const textNode = document.createElement("code");
+                textNode.textContent = fallbackText;
+                row.appendChild(textNode);
+            }
+        } else {
+            visibleTokens.forEach((token) => {
+                row.appendChild(renderToken(token, settings));
+            });
+        }
+
+        wrapper.appendChild(row);
+        return wrapper;
+    }
+
     function sortValueForEntry(entry, sortKey) {
         switch (sortKey) {
             case "input":
@@ -623,7 +700,10 @@
     function filteredEntriesForPreview() {
         const entries = currentDictionary?.entries || [];
         return entries.filter((entry) => {
-            if (hideBlankOutputs && !String(entry.outputText || "").trim()) {
+            if (hideBlankOutputs && !entryHasRenderableOutput(entry)) {
+                return false;
+            }
+            if (hideNonAlphanumericOutputs && !entryHasCharacterOutput(entry)) {
                 return false;
             }
             if (!matchesInputSearch(entry)) {
@@ -754,9 +834,7 @@
             tr.appendChild(tdInput);
 
             const tdOutput = document.createElement("td");
-            const output = document.createElement("code");
-            output.textContent = entry.outputText || "";
-            tdOutput.appendChild(output);
+            tdOutput.appendChild(renderOutputPreview(entry, settings));
             tr.appendChild(tdOutput);
 
             els.loadedChordsTableBody.appendChild(tr);
@@ -2044,6 +2122,14 @@
         currentPage = 1;
         renderLoadedChords(currentSettingsFromForm());
     });
+
+    els.hideNonAlphanumericOutputsToggle.checked = true;
+    els.hideNonAlphanumericOutputsToggle.addEventListener("change", () => {
+        hideNonAlphanumericOutputs = els.hideNonAlphanumericOutputsToggle.checked;
+        currentPage = 1;
+        renderLoadedChords(currentSettingsFromForm());
+    });
+
     els.inputSearchBox.addEventListener("input", () => {
         inputSearchQuery = els.inputSearchBox.value || "";
         currentPage = 1;

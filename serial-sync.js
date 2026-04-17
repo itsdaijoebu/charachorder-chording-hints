@@ -30,10 +30,10 @@
     331: "page_up",
     333: "end",
     334: "page_down",
-    335: "right_arrow",
-    336: "left_arrow",
-    337: "down_arrow",
-    338: "up_arrow",
+    335: "kbright",
+    336: "kbleft",
+    337: "kbdown",
+    338: "kbup",
 
     360: "f13",
     361: "f14",
@@ -91,14 +91,14 @@
     562: "mouse_left_click",
     563: "mouse_right_click",
     564: "mouse_middle_click",
-    565: "mouse_move_right",
-    566: "mouse_move_left",
-    567: "mouse_move_down",
-    568: "mouse_move_up",
-    569: "mouse_scroll_right",
-    570: "mouse_scroll_left",
-    571: "mouse_scroll_down",
-    572: "mouse_scroll_up",
+    565: "mouse_moveright",
+    566: "mouse_moveleft",
+    567: "mouse_movedown",
+    568: "mouse_moveup",
+    569: "mouse_scrollright",
+    570: "mouse_scrollleft",
+    571: "mouse_scrolldown",
+    572: "mouse_scrollup",
 
     573: "capitalize",
     574: "join",
@@ -125,7 +125,7 @@
     652: "profile_c",
 
     1001: "arpeggiate",
-    1002: "tap_dance"
+    1002: "tapdance"
   };
 
   function sleep(ms) {

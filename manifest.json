@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Entertrained Charachorder Hints",
-  "version": "0.9.0",
-  "description": "Shows Charachorder chord hints above words on Entertrained typing practice pages.",
+  "name": "Chording Hints",
+  "version": "1.0.0",
+  "description": "Shows chord hints for CCOS devices like the CharaChorder on typing training sites to help learn chording libraries faster.",
   "permissions": ["storage"],
   "host_permissions": ["https://entertrained.app/prompt/*"],
   "web_accessible_resources": [
@@ -22,6 +22,9 @@
   ],
   "action": {
     "default_title": "Entertrained Charachorder Hints",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_icon": {
+      "128": "icons/cch-icon-128.png"
+    }
   }
 }

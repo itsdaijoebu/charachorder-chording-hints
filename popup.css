@@ -66,6 +66,20 @@ body {
     margin-left: 1px;
 }
 
+.iconButton {
+    display: inline-flex;
+    gap: 5px;
+    justify-content: center;
+}
+
+.settingsIcon {
+    width: 1.5em;
+    height: 1.5em;
+    background-color: currentColor;
+    -webkit-mask: url("icons/settings.svg") center / contain no-repeat;
+    mask: url("icons/settings.svg") center / contain no-repeat;
+}
+
 
 h2 {
     margin: 0 0 8px 0;
@@ -353,6 +367,8 @@ button.secondary:hover {
     -webkit-mask: url("icons/power.svg") center / contain no-repeat;
     mask: url("icons/power.svg") center / contain no-repeat;
 }
+
+
 
 .popupSaveSettingsCard {
     margin-top: 7px;

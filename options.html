@@ -66,9 +66,15 @@
         <div class="actions previewToolbar">
           <button id="saveInputOverrideButton" type="button">Save all edited inputs</button>
           <button id="revertInputOverrideButton" type="button" class="secondary">Revert all unsaved edits</button>
-          <label class="check inlineCheck" for="hideBlankOutputsToggle">
+          <label class="check inlineCheck tooltipable" for="hideBlankOutputsToggle" data-tooltip="Hides chords without any output.">
             <input id="hideBlankOutputsToggle" type="checkbox" checked>
             <span>Hide blank outputs</span>
+            <span class="tooltipIcon" aria-hidden="true"></span>
+          </label>
+          <label class="check inlineCheck tooltipable" for="hideNonAlphanumericOutputsToggle" data-tooltip="Hides output that won't be seen in writing, ex. backspace.">
+            <input id="hideNonAlphanumericOutputsToggle" type="checkbox" checked>
+            <span>Hide non-character output</span>
+            <span class="tooltipIcon" aria-hidden="true"></span>
           </label>
           <span id="editingStatus" class="muted">Click any input to edit multiple rows before saving.</span>
         </div>
