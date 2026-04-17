@@ -5,6 +5,9 @@ Chrome extension that loads Charachorder chords to an internal library, either v
 Currently works with:
 - [Entertrained](https://www.entertrained.app)
 
+<img src="readme_images/cch-hero.png" alt="main-promo-image" width="480">
+<img src="readme_images/cch-splitscreen.png" alt="splitscreen-promo-image" width="480">
+
 
 ## Installation
 Getting it from the Chrome Web Store would be the easiest method that'll also keep the extension up-to-date, but it's currently undergoing submission review approval.
@@ -35,7 +38,7 @@ If, for whatever reason, you can't connect to your CCOS device:
 2. From this extension's Options page, find your JSON chord file via the `Choose File` button next to the `Import JSON` button
 3. `Import JSON` and wait for your chords to load.
 
-## Bug Reports, Feature Requests, Etc.
+## Bug Reports, Suggestions, Feature Requests, Etc.
 If you have any issues, either use the tools that GitHub provides or find me on the official CharaChorder Discord channel.
 
 ____
