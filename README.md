@@ -38,4 +38,6 @@ If, for whatever reason, you can't connect to your CCOS device:
 ## Bug Reports, Feature Requests, Etc.
 If you have any issues, either use the tools that GitHub provides or find me on the official CharaChorder Discord channel.
 
+____
+
 <a href="https://ko-fi.com/itsdaijoebu"><img src="images/kofi_button.png" alt="Support me on Ko-Fi" width="160"></a>
