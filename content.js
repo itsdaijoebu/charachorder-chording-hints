@@ -17,7 +17,8 @@
         trackedParagraphs: [],
         promptRefreshTimer: null,
         lastPromptSignature: "",
-        containerRebindTimer: null
+        containerRebindTimer: null,
+        maxLookupWordCount: 1
     };
 
     function log(...args) {
@@ -277,24 +278,76 @@
         return entries.map((entry) => entry.rawInput).join(" | ");
     }
 
-    function annotateWord(wordEl) {
-        const rawText = (wordEl.textContent || "").trim();
+    function refreshLookupMetadata() {
+        const normalizedOutputs = Object.keys(STATE.dictionary?.byNormalizedOutput || {});
+        STATE.maxLookupWordCount = Math.max(
+            1,
+            ...normalizedOutputs.map((key) => String(key).split(/\s+/u).filter(Boolean).length)
+        );
+    }
+
+    function wordText(wordEl) {
+        return (wordEl?.textContent || "").trim();
+    }
+
+    function phraseText(words, startIndex, wordCount) {
+        return words
+            .slice(startIndex, startIndex + wordCount)
+            .map(wordText)
+            .join(" ");
+    }
+
+    function findMatchFromWords(words, startIndex) {
+        const maxWordCount = Math.min(
+            STATE.maxLookupWordCount || 1,
+            words.length - startIndex
+        );
+
+        for (let wordCount = maxWordCount; wordCount >= 1; wordCount -= 1) {
+            const rawText = phraseText(words, startIndex, wordCount);
+            const normalized = CCHShared.normalizeTokenForLookup(rawText);
+
+            if (!normalized) {
+                continue;
+            }
+
+            const refs = STATE.dictionary?.byNormalizedOutput?.[normalized];
+            if (!refs?.length) {
+                continue;
+            }
+
+            const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
+            if (!chosen.length) {
+                return {
+                    matched: false,
+                    reason: "filtered-out",
+                    word: rawText,
+                    normalized,
+                    wordCount
+                };
+            }
+
+            return {
+                matched: true,
+                word: rawText,
+                normalized,
+                entries: chosen,
+                wordCount
+            };
+        }
+
+        const rawText = wordText(words[startIndex]);
         const normalized = CCHShared.normalizeTokenForLookup(rawText);
 
         if (!normalized) {
             return { matched: false, reason: "empty-normalized", word: rawText };
         }
 
-        const refs = STATE.dictionary?.byNormalizedOutput?.[normalized];
-        if (!refs?.length) {
-            return { matched: false, reason: "no-dictionary-match", word: rawText, normalized };
-        }
+        return { matched: false, reason: "no-dictionary-match", word: rawText, normalized };
+    }
 
-        const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
-        if (!chosen.length) {
-            return { matched: false, reason: "filtered-out", word: rawText, normalized };
-        }
-
+    function annotateMatch(words, startIndex, match) {
+        const wordEl = words[startIndex];
         wordEl.querySelectorAll(":scope > .cch-hint-label").forEach((existing) => existing.remove());
 
         if (getComputedStyle(wordEl).position === "static") {
@@ -304,10 +357,10 @@
 
         const label = document.createElement("span");
         label.className = "cch-hint-label";
-        if (chosen.length > 1) {
+        if (match.entries.length > 1) {
             label.classList.add("cch-multiple");
         }
-        label.appendChild(renderHintRows(chosen));
+        label.appendChild(renderHintRows(match.entries));
 
         wordEl.classList.add("cch-host");
         wordEl.dataset.cchAnnotated = "true";
@@ -315,11 +368,14 @@
 
         return {
             matched: true,
-            word: rawText,
-            normalized,
-            hint: hintTextForLogs(chosen),
-            matchCount: chosen.length,
-            active: wordEl.classList.contains("active")
+            word: match.word,
+            normalized: match.normalized,
+            hint: hintTextForLogs(match.entries),
+            matchCount: match.entries.length,
+            wordCount: match.wordCount,
+            active: words
+                .slice(startIndex, startIndex + match.wordCount)
+                .some((word) => word.classList.contains("active"))
         };
     }
 
@@ -337,10 +393,11 @@
         const matches = [];
         const misses = [];
 
-        for (const word of words) {
-            const result = annotateWord(word);
+        for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+            const result = findMatchFromWords(words, wordIndex);
             if (result.matched) {
-                matches.push(result);
+                matches.push(annotateMatch(words, wordIndex, result));
+                wordIndex += result.wordCount - 1;
             } else {
                 misses.push(result);
             }
@@ -358,7 +415,8 @@
                 word: m.word,
                 hint: m.hint,
                 active: m.active,
-                matchCount: m.matchCount
+                matchCount: m.matchCount,
+                wordCount: m.wordCount
             })),
             missSample: misses.slice(0, 8).map((m) => ({
                 word: m.word,
@@ -444,6 +502,7 @@
             stored[STORAGE_KEYS.parsedDictionary],
             stored[STORAGE_KEYS.inputDisplayOverrides]
         );
+        refreshLookupMetadata();
         STATE.settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
         applyAppearanceSettings();
 
@@ -603,6 +662,7 @@
                     stored[STORAGE_KEYS.parsedDictionary],
                     stored[STORAGE_KEYS.inputDisplayOverrides]
                 );
+                refreshLookupMetadata();
                 log("Dictionary changed", {
                     entryCount: STATE.dictionary?.entryCount ?? 0
                 });

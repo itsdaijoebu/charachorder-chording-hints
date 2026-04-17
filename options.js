@@ -449,6 +449,10 @@
     }
 
     function outputTokenForCode(code) {
+        if (code === 32) {
+            return CCHShared.makePseudoSpecialToken("spacebar", "spacebar");
+        }
+
         if (code >= 32 && code <= 126) {
             return {type: "char", char: String.fromCharCode(code)};
         }
@@ -475,8 +479,11 @@
         const tokens = outputPreviewTokens(entry);
         if (tokens.length) {
             return tokens
-                .filter((token) => token?.type === "char")
-                .map((token) => token.char)
+                .map((token) => {
+                    if (token?.type === "char") return token.char;
+                    if (token?.type === "special" && token.key === "spacebar") return " ";
+                    return "";
+                })
                 .join("");
         }
 
@@ -495,22 +502,23 @@
         row.className = "hintPreviewRow";
 
         const tokens = outputPreviewTokens(entry);
-        const visibleTokens = hideNonAlphanumericOutputs
-            ? tokens.filter((token) => token?.type === "char")
-            : tokens;
+        if (hideNonAlphanumericOutputs) {
+            const textNode = document.createElement("code");
+            textNode.textContent = visibleOutputCharacters(entry);
+            row.appendChild(textNode);
+            wrapper.appendChild(row);
+            return wrapper;
+        }
 
-        if (!visibleTokens.length) {
-            const fallbackText = hideNonAlphanumericOutputs
-                ? visibleOutputCharacters(entry)
-                : String(entry.outputText || "");
-
+        if (!tokens.length) {
+            const fallbackText = String(entry.outputText || "");
             if (fallbackText) {
                 const textNode = document.createElement("code");
                 textNode.textContent = fallbackText;
                 row.appendChild(textNode);
             }
         } else {
-            visibleTokens.forEach((token) => {
+            tokens.forEach((token) => {
                 row.appendChild(renderToken(token, settings));
             });
         }

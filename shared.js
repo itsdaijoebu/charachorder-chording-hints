@@ -1,5 +1,6 @@
 (() => {
   const SPECIAL_INPUT_META = {
+    32: { key: "spacebar", label: "spacebar" },
     256: { key: "inhibit_concatenator", label: "inhibit_concatenator" },
     298: { key: "backspace", label: "backspace"},
     335: { key: "kbright", label: "kbright"},
@@ -60,6 +61,7 @@
     layer4_left: "icons/layer4.svg",
     layer4_right: "icons/layer4.svg",
     quickfix: "icons/quickfix.svg",
+    spacebar: "icons/spacebar.svg",
     tapdance: "icons/tapdance.svg",
   };
 
@@ -97,6 +99,7 @@
       layer4_left: "Layer 4 (Left)",
       layer4_right: "Layer 4 (Right)",
       quickfix: "Quickfix - delete last chord attempt",
+      spacebar: "Space",
       tapdance: "Tap Dance Chord",
     };
   }
@@ -118,7 +121,7 @@
   }
 
   function parseCompoundInputString(inputText) {
-    const safeText = String(inputText ?? "").trim();
+    const safeText = String(inputText ?? "");
     if (!safeText) return [];
 
     return safeText
@@ -252,6 +255,9 @@
 
     if (token.type === "char") {
       const char = typeof token.char === "string" && token.char ? token.char[0] : "";
+      if (char === " ") {
+        return inputCodeToToken(32);
+      }
       if (char) {
         return {
           type: "char",
@@ -289,6 +295,9 @@
   function tokenToRawDisplay(token) {
     if (token.type === "char") {
       return token.char;
+    }
+    if (token.type === "special" && token.key === "spacebar") {
+      return " ";
     }
     if (token.type === "special" && token.key === "broken_image") {
       return UNKNOWN_COMPOUND_PLACEHOLDER;
@@ -432,6 +441,7 @@
     if (!text) return "";
     return text
       .trim()
+      .replace(/\s+/gu, " ")
       .replace(/^[^\p{L}\p{N}]+/gu, "")
       .replace(/[^\p{L}\p{N}]+$/gu, "")
       .toLowerCase();
