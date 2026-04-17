@@ -4,17 +4,26 @@
   "version": "1.0.0",
   "description": "Shows chord hints for CCOS devices like the CharaChorder on typing training sites to help learn chording libraries faster.",
   "permissions": ["storage"],
-  "host_permissions": ["https://entertrained.app/prompt/*"],
+  "host_permissions": [
+    "https://entertrained.app/prompt/*",
+    "https://monkeytype.com/*"
+  ],
   "web_accessible_resources": [
     {
       "resources": ["icons/*.svg"],
-      "matches": ["https://entertrained.app/*"]
+      "matches": [
+        "https://entertrained.app/*",
+        "https://monkeytype.com/*"
+      ]
     }
   ],
   "options_page": "options.html",
   "content_scripts": [
     {
-      "matches": ["https://entertrained.app/prompt/*"],
+      "matches": [
+        "https://entertrained.app/prompt/*",
+        "https://monkeytype.com/*"
+      ],
       "js": ["shared.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
