@@ -11,9 +11,13 @@ Currently works with:
 
 
 ## Installation
-Getting it from the Chrome Web Store would be the easiest method that'll also keep the extension up-to-date, but it's currently undergoing submission review approval.
+Getting it from the [Chrome Web Store](https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn) would be the easiest method that'll also keep the extension up-to-date.
 
-Until then, you can download the repo (unzipping it if necessary, depending on how you downloaded it). After that:
+<a href="https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn"><img src="readme_images/chrome_store.png" alt="Support me on Ko-Fi" width="160"></a>
+
+That said, MonkeyType support is still pending review for the web store version. 
+
+You can also just download this repo (unzipping it if necessary, depending on how you downloaded it). After that:
 
 1. Open any chromium browser and go to your manage extensions page.
 2. Turn on Developer Mode.
