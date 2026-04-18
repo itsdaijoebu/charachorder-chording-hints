@@ -16,7 +16,7 @@
           <p class="muted">Import a JSON export or sync directly from the device. The saved dictionary powers the on-page chord hints.</p>
         </div>
         <div class="themeModeField">
-          <span class="themeModeLabel">Options theme</span>
+<!--          <span class="themeModeLabel">Options theme</span>-->
           <label class="themeToggleRow" for="optionsThemeToggle">
             <span class="themeToggleText">Light</span>
             <input id="optionsThemeToggle" type="checkbox" role="switch" aria-label="Toggle dark theme">
@@ -162,6 +162,23 @@
             </select>
           </div>
         </label>
+        <label class="fieldLabel" for="hintPosition">
+          <span>Hint position</span>
+          <select id="hintPosition">
+            <option value="left">Left aligned</option>
+            <option value="center">Centered</option>
+          </select>
+        </label>
+        <label class="fieldLabel appearanceFullRow" for="hintDisplay">
+          <span class="labelWithTooltip tooltipable" data-tooltip="Show or hide chord input by default. When hidden, chord input displays on hover. Click any hint box to toggle it.">
+            <span>Hint display</span>
+            <span class="tooltipIcon" aria-hidden="true"></span>
+          </span>
+          <select id="hintDisplay">
+            <option value="always">Show by default</option>
+            <option value="hover">Hide by default</option>
+          </select>
+        </label>
       </div>
 
       <div class="previewCard">
@@ -169,15 +186,19 @@
         <div class="previewGrid">
           <div class="previewPanel previewPanelDark">
             <div class="previewCanvas">
-              <div id="hintPreviewDark" class="previewHint">chrd</div>
+              <div id="hintPreviewWordDark" class="previewWord">
+                <div id="hintPreviewDark" class="previewHint">chrd</div>
+                <span class="previewLabel">Dark</span>
+              </div>
             </div>
-            <div class="previewLabel">Dark</div>
           </div>
           <div class="previewPanel previewPanelLight">
             <div class="previewCanvas">
-              <div id="hintPreviewLight" class="previewHint">chrd</div>
+              <div id="hintPreviewWordLight" class="previewWord">
+                <div id="hintPreviewLight" class="previewHint">chrd</div>
+                <span class="previewLabel">Light</span>
+              </div>
             </div>
-            <div class="previewLabel">Light</div>
           </div>
         </div>
       </div>

@@ -121,6 +121,8 @@ input[type="color"]{
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 2em;
+  padding-top: 1em;
 }
 
 .previewLabel {
@@ -129,16 +131,56 @@ input[type="color"]{
 }
 
 .previewHint {
+  position: absolute;
+  top: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15em;
+  padding: 0.05em 0.3em;
+  border: 1px solid rgba(107, 114, 128, 0.25);
+  border-radius: 0.35em;
+  line-height: 1.05;
+  text-align: center;
+  max-width: 24ch;
+  overflow: visible;
+  font-family: system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.previewWord {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0.35em 0.55em;
-  border-radius: 0.55em;
+  padding: 0.08em 0.18em;
+  border: 2px dotted transparent;
+  border-radius: 6px;
   line-height: 1.1;
-  font-weight: 600;
-  text-align: center;
-  max-width: 100%;
-  word-break: break-word;
+}
+
+.previewAlignLeft {
+  left: 0;
+  transform: translate(0, calc(-100% - 0.1em));
+}
+
+.previewAlignCenter {
+  left: 50%;
+  transform: translate(-50%, calc(-100% - 0.1em));
+}
+
+.previewHintHoverReveal {
+  color: transparent !important;
+}
+
+.previewHintHoverReveal:hover,
+.previewHintForceVisible {
+  color: var(--cch-preview-hint-text-color) !important;
+}
+
+.previewHintForceHidden {
+  color: transparent !important;
 }
 
 textarea {

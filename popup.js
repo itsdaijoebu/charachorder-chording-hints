@@ -18,8 +18,12 @@
         popupHintBoxLightModeOpacity: document.getElementById("popupHintBoxLightModeOpacity"),
         popupHintTextFontSizeValue: document.getElementById("popupHintTextFontSizeValue"),
         popupHintTextFontSizeUnit: document.getElementById("popupHintTextFontSizeUnit"),
+        popupHintPosition: document.getElementById("popupHintPosition"),
+        popupHintDisplay: document.getElementById("popupHintDisplay"),
         popupLightPreviewHint: document.getElementById("popupLightPreviewHint"),
         popupDarkPreviewHint: document.getElementById("popupDarkPreviewHint"),
+        popupLightPreviewWord: document.getElementById("popupLightPreviewWord"),
+        popupDarkPreviewWord: document.getElementById("popupDarkPreviewWord"),
         popupEnabledButton: document.getElementById("popupEnabledButton"),
         // popupEnabledButtonLabel: document.getElementById("popupEnabledButtonLabel")
     };
@@ -78,20 +82,49 @@
     function updateAppearancePreview() {
         const settings = currentSettingsFromForm();
         const fontSize = `${settings.hint_text_font_size_value}${settings.hint_text_font_size_unit}`;
+        const alignClass = settings.hint_position === "center" ? "popupPreviewAlignCenter" : "popupPreviewAlignLeft";
+        const revealOnHover = settings.hint_display === "hover";
 
         els.popupLightPreviewHint.style.background = hexToRgba(
             settings.hint_box_light_mode_color,
             settings.hint_box_light_mode_opacity
         );
         els.popupLightPreviewHint.style.color = settings.hint_text_light_mode_color;
+        els.popupLightPreviewHint.style.setProperty("--cch-preview-hint-text-color", settings.hint_text_light_mode_color);
         els.popupLightPreviewHint.style.fontSize = fontSize;
+        els.popupLightPreviewHint.classList.toggle("popupPreviewAlignLeft", alignClass === "popupPreviewAlignLeft");
+        els.popupLightPreviewHint.classList.toggle("popupPreviewAlignCenter", alignClass === "popupPreviewAlignCenter");
+        els.popupLightPreviewHint.classList.toggle("popupPreviewHintHoverReveal", revealOnHover);
 
         els.popupDarkPreviewHint.style.background = hexToRgba(
             settings.hint_box_dark_mode_color,
             settings.hint_box_dark_mode_opacity
         );
         els.popupDarkPreviewHint.style.color = settings.hint_text_dark_mode_color;
+        els.popupDarkPreviewHint.style.setProperty("--cch-preview-hint-text-color", settings.hint_text_dark_mode_color);
         els.popupDarkPreviewHint.style.fontSize = fontSize;
+        els.popupDarkPreviewHint.classList.toggle("popupPreviewAlignLeft", alignClass === "popupPreviewAlignLeft");
+        els.popupDarkPreviewHint.classList.toggle("popupPreviewAlignCenter", alignClass === "popupPreviewAlignCenter");
+        els.popupDarkPreviewHint.classList.toggle("popupPreviewHintHoverReveal", revealOnHover);
+    }
+
+    function togglePreviewHintDisplay(label) {
+        if (label.classList.contains("popupPreviewHintForceVisible")) {
+            label.classList.remove("popupPreviewHintForceVisible");
+            label.classList.add("popupPreviewHintForceHidden");
+            return;
+        }
+
+        if (label.classList.contains("popupPreviewHintForceHidden")) {
+            label.classList.remove("popupPreviewHintForceHidden");
+            return;
+        }
+
+        if (currentSettingsFromForm().hint_display === "hover") {
+            label.classList.add("popupPreviewHintForceVisible");
+        } else {
+            label.classList.add("popupPreviewHintForceHidden");
+        }
     }
 
     function hydrateSettings(rawSettings) {
@@ -110,6 +143,15 @@
         const rawHintTextSizeValue = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em;
         settings.hint_text_font_size_value = clampNumber(rawHintTextSizeValue, 0.1, 64, 0.5);
         settings.hint_text_font_size_unit = settings.hint_text_font_size_unit === "px" ? "px" : "em";
+        settings.hint_position = ["left", "center"].includes(settings.hint_position)
+            ? settings.hint_position
+            : "left";
+        settings.hint_display = ["always", "hover"].includes(settings.hint_display)
+            ? settings.hint_display
+            : settings.chordable_word_display === "highlight-only"
+                ? "hover"
+                : "always";
+        delete settings.chordable_word_display;
         return settings;
     }
 
@@ -166,6 +208,8 @@
         els.popupHintBoxLightModeOpacity.value = settings.hint_box_light_mode_opacity;
         els.popupHintTextFontSizeValue.value = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em;
         els.popupHintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
+        els.popupHintPosition.value = settings.hint_position || "left";
+        els.popupHintDisplay.value = settings.hint_display || "always";
         syncHintTextSizeFieldBehavior();
         updateAppearancePreview();
         updateEnabledButton(settings.enabled);
@@ -192,6 +236,8 @@
             hint_text_font_size_em: els.popupHintTextFontSizeUnit.value === "em"
                 ? clampNumber(els.popupHintTextFontSizeValue.value, 0.1, 4, defaults.hint_text_font_size_em)
                 : defaults.hint_text_font_size_em,
+            hint_position: els.popupHintPosition.value === "center" ? "center" : "left",
+            hint_display: els.popupHintDisplay.value === "hover" ? "hover" : "always",
             hotkeys: draftSettings.hotkeys,
             enabled: draftSettings.enabled
         });
@@ -323,7 +369,9 @@
         els.popupHintBoxLightModeColor,
         els.popupHintTextLightModeColor,
         els.popupHintBoxLightModeOpacity,
-        els.popupHintTextFontSizeValue
+        els.popupHintTextFontSizeValue,
+        els.popupHintPosition,
+        els.popupHintDisplay
     ].forEach((input) => {
         input.addEventListener("input", updateAppearancePreview);
         input.addEventListener("change", updateAppearancePreview);
@@ -332,6 +380,13 @@
     els.popupHintTextFontSizeUnit.addEventListener("change", () => {
         syncHintTextSizeFieldBehavior();
         updateAppearancePreview();
+    });
+
+    [els.popupLightPreviewHint, els.popupDarkPreviewHint].forEach((el) => {
+        el.addEventListener("click", (event) => {
+            event.preventDefault();
+            togglePreviewHintDisplay(el);
+        });
     });
 
     els.popupSaveButton.addEventListener("click", saveSettings);

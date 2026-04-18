@@ -33,7 +33,7 @@
         <h2>Appearance</h2>
         <div class="field_grid compactFields appearanceGrid">
             <div class="appearanceFullRow popupThemeControls">
-                <span class="popupThemeLabel">Popup theme</span>
+<!--                <span class="popupThemeLabel">Popup theme</span>-->
                 <label class="popupThemeToggleRow" for="popupThemeToggle">
                     <input id="popupUseSystemTheme" type="checkbox">
                     <span>Use system theme</span>
@@ -46,13 +46,13 @@
                     id="popupHintBoxDarkModeColor" type="color"></label>
             <label class="fieldLabel" for="popupHintTextDarkModeColor"><span>Dark text color</span><input
                     id="popupHintTextDarkModeColor" type="color"></label>
-            <label class="fieldLabel" for="popupHintBoxDarkModeOpacity"><span>Dark box opacity</span><input
+            <label class="fieldLabel" for="popupHintBoxDarkModeOpacity"><span>Dark opacity</span><input
                     id="popupHintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"></label>
             <label class="fieldLabel" for="popupHintBoxLightModeColor"><span>Light box color</span><input
                     id="popupHintBoxLightModeColor" type="color"></label>
             <label class="fieldLabel" for="popupHintTextLightModeColor"><span>Light text color</span><input
                     id="popupHintTextLightModeColor" type="color"></label>
-            <label class="fieldLabel" for="popupHintBoxLightModeOpacity"><span>Light box opacity</span><input
+            <label class="fieldLabel" for="popupHintBoxLightModeOpacity"><span>Light opacity</span><input
                     id="popupHintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
             <label class="fieldLabel appearanceFullRow" for="popupHintTextFontSizeValue">
                 <span class="labelWithTooltip tooltipable"
@@ -66,18 +66,38 @@
                     </select>
                 </div>
             </label>
+            <label class="fieldLabel" for="popupHintPosition">
+                <span>Hint position</span>
+                <select id="popupHintPosition">
+                    <option value="left">Left aligned</option>
+                    <option value="center">Centered</option>
+                </select>
+            </label>
+            <label class="fieldLabel" for="popupHintDisplay">
+                <span class="labelWithTooltip tooltipable"
+                      data-tooltip="Show or hide chord input by default. When hidden, chord input displays on hover. Click any hint box to toggle it.">Hint display <span
+                        class="tooltipIcon" aria-hidden="true"></span></span>
+                <select id="popupHintDisplay">
+                    <option value="always">Show by default</option>
+                    <option value="hover">Hide by default</option>
+                </select>
+            </label>
             <div class="appearanceFullRow popupPreviewGrid" aria-label="Live appearance preview">
-                <div class="popupPreviewPanel popupPreviewPanelLight">
-                    <div class="popupPreviewCanvas">
-                        <div id="popupLightPreviewHint" class="popupPreviewHint">chrd</div>
-                    </div>
-                    <div class="popupPreviewLabel">Light</div>
-                </div>
                 <div class="popupPreviewPanel popupPreviewPanelDark">
                     <div class="popupPreviewCanvas">
-                        <div id="popupDarkPreviewHint" class="popupPreviewHint">chrd</div>
+                        <div id="popupDarkPreviewWord" class="popupPreviewWord">
+                            <div id="popupDarkPreviewHint" class="popupPreviewHint">chrd</div>
+                            <span class="popupPreviewLabel">Dark</span>
+                        </div>
                     </div>
-                    <div class="popupPreviewLabel">Dark</div>
+                </div>
+                <div class="popupPreviewPanel popupPreviewPanelLight">
+                    <div class="popupPreviewCanvas">
+                        <div id="popupLightPreviewWord" class="popupPreviewWord">
+                            <div id="popupLightPreviewHint" class="popupPreviewHint">chrd</div>
+                            <span class="popupPreviewLabel">Light</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

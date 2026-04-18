@@ -61,9 +61,13 @@
         hintTextLightModeColor: document.getElementById("hintTextLightModeColor"),
         hintTextFontSizeValue: document.getElementById("hintTextFontSizeValue"),
         hintTextFontSizeUnit: document.getElementById("hintTextFontSizeUnit"),
+        hintPosition: document.getElementById("hintPosition"),
+        hintDisplay: document.getElementById("hintDisplay"),
 
         hintPreviewDark: document.getElementById("hintPreviewDark"),
         hintPreviewLight: document.getElementById("hintPreviewLight"),
+        hintPreviewWordDark: document.getElementById("hintPreviewWordDark"),
+        hintPreviewWordLight: document.getElementById("hintPreviewWordLight"),
 
         saveSettingsButton: document.getElementById("saveSettingsButton"),
         saveSettingsButtonSecondary: document.getElementById("saveSettingsButtonSecondary"),
@@ -295,6 +299,15 @@
         settings.hint_text_font_size_em = settings.hint_text_font_size_unit === "em"
             ? settings.hint_text_font_size_value
             : settings.hint_text_font_size_em;
+        settings.hint_position = ["left", "center"].includes(settings.hint_position)
+            ? settings.hint_position
+            : "left";
+        settings.hint_display = ["always", "hover"].includes(settings.hint_display)
+            ? settings.hint_display
+            : settings.chordable_word_display === "highlight-only"
+                ? "hover"
+                : "always";
+        delete settings.chordable_word_display;
 
         return settings;
     }
@@ -886,6 +899,8 @@
             hint_text_font_size_em: els.hintTextFontSizeUnit.value === "em"
                 ? clampNumber(els.hintTextFontSizeValue.value, 0.1, 4, defaults.hint_text_font_size_em)
                 : defaults.hint_text_font_size_em,
+            hint_position: els.hintPosition.value === "center" ? "center" : "left",
+            hint_display: els.hintDisplay.value === "hover" ? "hover" : "always",
 
             hotkeys: CCHShared.normalizeHotkeys(optionHotkeys),
 
@@ -953,6 +968,8 @@
 
         els.hintTextFontSizeValue.value = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em ?? 0.5;
         els.hintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
+        els.hintPosition.value = settings.hint_position || "left";
+        els.hintDisplay.value = settings.hint_display || "always";
         syncHintTextSizeFieldBehavior();
 
         // els.descDupAll.value = settings.specialTokenDescriptions.dup_all || "";
@@ -1036,14 +1053,43 @@
         const hintTextSizeUnit = ["em", "px"].includes(settings.hint_text_font_size_unit)
             ? settings.hint_text_font_size_unit
             : "em";
+        const alignClass = settings.hint_position === "center" ? "previewAlignCenter" : "previewAlignLeft";
+        const revealOnHover = settings.hint_display === "hover";
 
         els.hintPreviewDark.style.background = hexToRgba(settings.hint_box_dark_mode_color, settings.hint_box_dark_mode_opacity);
         els.hintPreviewDark.style.color = settings.hint_text_dark_mode_color;
+        els.hintPreviewDark.style.setProperty("--cch-preview-hint-text-color", settings.hint_text_dark_mode_color);
         els.hintPreviewDark.style.fontSize = `${hintTextSizeValue}${hintTextSizeUnit}`;
+        els.hintPreviewDark.classList.toggle("previewAlignLeft", alignClass === "previewAlignLeft");
+        els.hintPreviewDark.classList.toggle("previewAlignCenter", alignClass === "previewAlignCenter");
+        els.hintPreviewDark.classList.toggle("previewHintHoverReveal", revealOnHover);
 
         els.hintPreviewLight.style.background = hexToRgba(settings.hint_box_light_mode_color, settings.hint_box_light_mode_opacity);
         els.hintPreviewLight.style.color = settings.hint_text_light_mode_color;
+        els.hintPreviewLight.style.setProperty("--cch-preview-hint-text-color", settings.hint_text_light_mode_color);
         els.hintPreviewLight.style.fontSize = `${hintTextSizeValue}${hintTextSizeUnit}`;
+        els.hintPreviewLight.classList.toggle("previewAlignLeft", alignClass === "previewAlignLeft");
+        els.hintPreviewLight.classList.toggle("previewAlignCenter", alignClass === "previewAlignCenter");
+        els.hintPreviewLight.classList.toggle("previewHintHoverReveal", revealOnHover);
+    }
+
+    function togglePreviewHintDisplay(label) {
+        if (label.classList.contains("previewHintForceVisible")) {
+            label.classList.remove("previewHintForceVisible");
+            label.classList.add("previewHintForceHidden");
+            return;
+        }
+
+        if (label.classList.contains("previewHintForceHidden")) {
+            label.classList.remove("previewHintForceHidden");
+            return;
+        }
+
+        if (currentSettingsFromForm().hint_display === "hover") {
+            label.classList.add("previewHintForceVisible");
+        } else {
+            label.classList.add("previewHintForceHidden");
+        }
     }
 
     function parseHexBytes(hex) {
@@ -2203,7 +2249,9 @@
         els.hintBoxLightModeColor,
         els.hintBoxLightModeOpacity,
         els.hintTextLightModeColor,
-        els.hintTextFontSizeValue
+        els.hintTextFontSizeValue,
+        els.hintPosition,
+        els.hintDisplay
     ].forEach((el) => {
         el.addEventListener("input", () => updateAppearancePreview(currentSettingsFromForm()));
         el.addEventListener("change", () => updateAppearancePreview(currentSettingsFromForm()));
@@ -2212,6 +2260,13 @@
     els.hintTextFontSizeUnit.addEventListener("change", () => {
         syncHintTextSizeFieldBehavior();
         updateAppearancePreview(currentSettingsFromForm());
+    });
+
+    [els.hintPreviewDark, els.hintPreviewLight].forEach((el) => {
+        el.addEventListener("click", (event) => {
+            event.preventDefault();
+            togglePreviewHintDisplay(el);
+        });
     });
 
     initializeCollapsibleSections();

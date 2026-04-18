@@ -61,6 +61,16 @@ body.light {
   font-family: system-ui, sans-serif;
 }
 
+.cch-hint-label.cch-align-left {
+  left: 0;
+  transform: translate(0, calc(-100% - var(--cch-label-offset-y)));
+}
+
+.cch-hint-label.cch-align-center {
+  left: 50%;
+  transform: translate(-50%, calc(-100% - var(--cch-label-offset-y)));
+}
+
 .cch-overlay-root {
   position: fixed;
   inset: 0;
@@ -77,6 +87,19 @@ body.light {
   align-items: center;
   gap: var(--cch-label-inline-gap);
   white-space: nowrap;
+}
+
+.cch-hint-label.cch-hover-reveal .cch-hint-row {
+  opacity: 0;
+}
+
+.cch-hint-label.cch-hover-reveal:hover .cch-hint-row,
+.cch-hint-label.cch-force-visible .cch-hint-row {
+  opacity: 1;
+}
+
+.cch-hint-label.cch-force-hidden .cch-hint-row {
+  opacity: 0;
 }
 
 .cch-hint-label.cch-multiple {

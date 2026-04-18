@@ -120,13 +120,13 @@
                     ? wordLists[0]
                     : this.getWordElements(container);
                 const texts = words.map((word) =>
-                    annotationFreeTextContent(word)
+                    wordRecordText(word)
                         .replace(/\s+/g, " ")
                         .trim()
                 );
 
-                const firstWordIndex = readMonkeytypeWordIndex(words[0]);
-                const lastWordIndex = readMonkeytypeWordIndex(words[words.length - 1]);
+                const firstWordIndex = readMonkeytypeWordIndex(wordRecordElement(words[0]));
+                const lastWordIndex = readMonkeytypeWordIndex(wordRecordElement(words[words.length - 1]));
 
                 return JSON.stringify({
                     site: this.key,
@@ -145,7 +145,10 @@
                 };
             },
             mutationIsRelevant(mutation) {
-                return monkeytypeMutationIsRelevant(mutation);
+                return Boolean(monkeytypeMutationRefreshMode(mutation));
+            },
+            mutationRefreshMode(mutation) {
+                return monkeytypeMutationRefreshMode(mutation);
             }
         }
     ];
@@ -171,6 +174,15 @@
         };
 
         merged.hotkeys = CCHShared.normalizeHotkeys(merged.hotkeys);
+        merged.hint_position = ["left", "center"].includes(merged.hint_position)
+            ? merged.hint_position
+            : "left";
+        merged.hint_display = ["always", "hover"].includes(merged.hint_display)
+            ? merged.hint_display
+            : merged.chordable_word_display === "highlight-only"
+                ? "hover"
+                : "always";
+        delete merged.chordable_word_display;
 
         return merged;
     }
@@ -222,6 +234,10 @@
 
             let row = rows.find((candidate) => Math.abs(candidate.top - rect.top) <= rowTolerance);
             if (!row) {
+                if (rows.length >= rowLimit) {
+                    break;
+                }
+
                 row = {
                     top: rect.top,
                     words: []
@@ -268,7 +284,7 @@
         return Number.isFinite(parsed) ? parsed : String(value);
     }
 
-    function wordIndexSignatureFromNodes(nodes) {
+    function wordIndexListFromNodes(nodes) {
         return Array.from(nodes || [])
             .flatMap((node) => {
                 if (!(node instanceof Element)) return [];
@@ -289,8 +305,7 @@
                     .filter((index) => index != null)
                     .map(String);
             })
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-            .join("|");
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     }
 
     function mutationTargetWord(mutation) {
@@ -301,20 +316,24 @@
         return word instanceof HTMLElement ? word : null;
     }
 
-    function monkeytypeMutationIsRelevant(mutation) {
+    function monkeytypeMutationRefreshMode(mutation) {
         if (mutation.type !== "childList") return false;
 
-        const addedSignature = wordIndexSignatureFromNodes(mutation.addedNodes);
-        const removedSignature = wordIndexSignatureFromNodes(mutation.removedNodes);
+        const addedIndexes = wordIndexListFromNodes(mutation.addedNodes);
+        const removedIndexes = wordIndexListFromNodes(mutation.removedNodes);
+        const addedSignature = addedIndexes.join("|");
+        const removedSignature = removedIndexes.join("|");
 
         if (addedSignature || removedSignature) {
-            return addedSignature !== removedSignature;
+            if (addedSignature !== removedSignature) return "annotate";
+            if (addedIndexes.length <= 1 && removedIndexes.length <= 1) return false;
+            return "check";
         }
 
         const word = mutationTargetWord(mutation);
         if (word?.classList.contains("active")) return false;
 
-        return true;
+        return "check";
     }
 
     function hexToRgba(hex, opacity) {
@@ -393,6 +412,41 @@
         if (!adapter) return [];
 
         return adapter.getWordElements(paragraph);
+    }
+
+    function wordTextFromElement(wordEl) {
+        return annotationFreeTextContent(wordEl).trim();
+    }
+
+    function wordRecordElement(word) {
+        return word?.el instanceof HTMLElement ? word.el : word;
+    }
+
+    function wordRecordText(word) {
+        if (typeof word?.text === "string") return word.text;
+        return wordTextFromElement(wordRecordElement(word));
+    }
+
+    function wordRecordRect(word) {
+        if (word?.rect && typeof word.rect.width === "number" && typeof word.rect.height === "number") {
+            return word.rect;
+        }
+
+        const el = wordRecordElement(word);
+        return el instanceof HTMLElement ? el.getBoundingClientRect() : null;
+    }
+
+    function wordRecordHasClass(word, className) {
+        const el = wordRecordElement(word);
+        return el instanceof HTMLElement && el.classList.contains(className);
+    }
+
+    function createWordRecords(words, includeRects = false) {
+        return words.map((el) => ({
+            el,
+            text: wordTextFromElement(el),
+            rect: includeRects ? el.getBoundingClientRect() : null
+        }));
     }
 
     function buildPromptSignature(paragraphs = null, wordLists = null) {
@@ -561,25 +615,22 @@
         );
     }
 
-    function wordText(wordEl) {
-        return (wordEl?.textContent || "").trim();
-    }
-
-    function phraseText(words, startIndex, wordCount) {
-        return words
-            .slice(startIndex, startIndex + wordCount)
-            .map(wordText)
-            .join(" ");
-    }
-
     function findMatchFromWords(words, startIndex) {
         const maxWordCount = Math.min(
             STATE.maxLookupWordCount || 1,
             words.length - startIndex
         );
+        const phraseTexts = [];
+        let phrase = "";
+
+        for (let wordCount = 1; wordCount <= maxWordCount; wordCount += 1) {
+            const text = wordRecordText(words[startIndex + wordCount - 1]);
+            phrase = phrase ? `${phrase} ${text}` : text;
+            phraseTexts[wordCount] = phrase;
+        }
 
         for (let wordCount = maxWordCount; wordCount >= 1; wordCount -= 1) {
-            const rawText = phraseText(words, startIndex, wordCount);
+            const rawText = phraseTexts[wordCount];
             const normalized = CCHShared.normalizeTokenForLookup(rawText);
 
             if (!normalized) {
@@ -611,7 +662,7 @@
             };
         }
 
-        const rawText = wordText(words[startIndex]);
+        const rawText = phraseTexts[1] || "";
         const normalized = CCHShared.normalizeTokenForLookup(rawText);
 
         if (!normalized) {
@@ -621,13 +672,49 @@
         return { matched: false, reason: "no-dictionary-match", word: rawText, normalized };
     }
 
+    function hintAlignmentClass() {
+        return STATE.settings.hint_position === "center" ? "cch-align-center" : "cch-align-left";
+    }
+
+    function hintDisplayClass() {
+        return STATE.settings.hint_display === "hover" ? "cch-hover-reveal" : "cch-show-always";
+    }
+
+    function toggleHintDisplay(label) {
+        if (!(label instanceof HTMLElement)) return;
+
+        if (label.classList.contains("cch-force-visible")) {
+            label.classList.remove("cch-force-visible");
+            label.classList.add("cch-force-hidden");
+            return;
+        }
+
+        if (label.classList.contains("cch-force-hidden")) {
+            label.classList.remove("cch-force-hidden");
+            return;
+        }
+
+        if (STATE.settings.hint_display === "hover") {
+            label.classList.add("cch-force-visible");
+        } else {
+            label.classList.add("cch-force-hidden");
+        }
+    }
+
     function createHintLabel(entries) {
         const label = document.createElement("span");
         label.className = "cch-hint-label";
+        label.classList.add(hintAlignmentClass());
+        label.classList.add(hintDisplayClass());
         if (entries.length > 1) {
             label.classList.add("cch-multiple");
         }
         label.appendChild(renderHintRows(entries));
+        label.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleHintDisplay(label);
+        });
         return label;
     }
 
@@ -641,12 +728,15 @@
             wordCount: match.wordCount,
             active: words
                 .slice(startIndex, startIndex + match.wordCount)
-                .some((word) => word.classList.contains("active"))
+                .some((word) => wordRecordHasClass(word, "active"))
         };
     }
 
     function annotateInlineMatch(words, startIndex, match, includeDebugSummary = false) {
-        const wordEl = words[startIndex];
+        const wordEl = wordRecordElement(words[startIndex]);
+        if (!(wordEl instanceof HTMLElement)) {
+            return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
+        }
 
         if (getComputedStyle(wordEl).position === "static") {
             wordEl.dataset.cchOriginalPosition = "static";
@@ -654,7 +744,6 @@
         }
 
         const label = createHintLabel(match.entries);
-
         wordEl.classList.add("cch-host");
         wordEl.dataset.cchAnnotated = "true";
         wordEl.prepend(label);
@@ -667,17 +756,18 @@
     }
 
     function annotateOverlayMatch(words, startIndex, match, includeDebugSummary = false) {
-        const wordEl = words[startIndex];
         const root = getOverlayRoot();
         if (!root) return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
 
-        const rect = wordEl.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) {
+        const rect = wordRecordRect(words[startIndex]);
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
             return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
         }
 
         const label = createHintLabel(match.entries);
-        label.style.left = `${rect.left + rect.width / 2}px`;
+        label.style.left = STATE.settings.hint_position === "center"
+            ? `${rect.left + rect.width / 2}px`
+            : `${rect.left}px`;
         label.style.top = `${rect.top}px`;
         root.appendChild(label);
 
@@ -736,9 +826,9 @@
         };
 
         if (includeDebugSummary) {
-            summary.activeWordCount = words.filter((word) => word.classList.contains("active")).length;
+            summary.activeWordCount = words.filter((word) => wordRecordHasClass(word, "active")).length;
             summary.currentLetterCount = paragraph.querySelectorAll(".letter.current").length;
-            summary.wordSample = words.slice(0, 12).map((word) => annotationFreeTextContent(word).trim());
+            summary.wordSample = words.slice(0, 12).map(wordRecordText);
             summary.matchSample = matches.slice(0, 8).map((m) => ({
                 word: m.word,
                 hint: m.hint,
@@ -797,7 +887,8 @@
         }
 
         const wordLists = paragraphs.map((paragraph) => getWordElements(paragraph));
-        const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordLists);
+        const wordRecordLists = wordLists.map((words) => createWordRecords(words, renderMode === "overlay"));
+        const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordRecordLists);
 
         if (STATE.settings.debugLogging) {
             log("Paragraph discovery", {
@@ -806,7 +897,7 @@
                 paragraphSamples: paragraphs.slice(0, 5).map((paragraph, index) => ({
                     paragraphIndex: index,
                     className: paragraph.className || "",
-                    wordCount: wordLists[index]?.length || 0,
+                    wordCount: wordRecordLists[index]?.length || 0,
                     sampleText: annotationFreeTextContent(paragraph).trim().slice(0, 160)
                 }))
             });
@@ -821,7 +912,7 @@
         }
 
         const summaries = paragraphs.map((paragraph, index) =>
-            annotateParagraph(paragraph, index, wordLists[index], renderMode)
+            annotateParagraph(paragraph, index, wordRecordLists[index], renderMode)
         );
         const totalWords = summaries.reduce((sum, item) => sum + item.wordCount, 0);
         const totalMatches = summaries.reduce((sum, item) => sum + item.matchedCount, 0);
@@ -930,10 +1021,18 @@
 
         STATE.promptObserver = new MutationObserver((mutations) => {
             let sawRelevantChange = false;
+            let shouldAnnotateDirectly = false;
 
             for (const mutation of mutations) {
                 if (mutationOnlyTouchesAnnotations(mutation)) {
                     continue;
+                }
+
+                const refreshMode = adapter.mutationRefreshMode?.(mutation);
+                if (refreshMode) {
+                    sawRelevantChange = true;
+                    shouldAnnotateDirectly = refreshMode === "annotate";
+                    break;
                 }
 
                 if (adapter.mutationIsRelevant(mutation)) {
@@ -943,6 +1042,11 @@
             }
 
             if (!sawRelevantChange) return;
+            if (shouldAnnotateDirectly) {
+                scheduleAnnotation(true);
+                return;
+            }
+
             handlePotentialPromptChange("prompt-container-mutation");
         });
 
@@ -1110,6 +1214,10 @@
 
         window.addEventListener("resize", () => {
             if (currentSiteAdapter()?.renderMode === "overlay") {
+                if (!STATE.overlayRoot?.childElementCount || !STATE.observedPromptContainer?.isConnected) {
+                    return;
+                }
+
                 scheduleAnnotation(true);
             }
         });
