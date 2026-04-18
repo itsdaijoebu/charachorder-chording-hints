@@ -179,6 +179,7 @@ button.secondary:hover {
     color: var(--text);
     font-size: 0.82rem;
     line-height: 1.35;
+    white-space: pre-line;
     opacity: 0;
     pointer-events: none;
     transform: translateY(-4px);
@@ -321,7 +322,7 @@ button.secondary:hover {
     align-items: center;
     justify-content: center;
     /*min-height: 2em;*/
-    padding-top: 1.2em;
+    padding-top: 1em;
 }
 
 .popupPreviewHint {

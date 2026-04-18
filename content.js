@@ -150,6 +150,73 @@
             mutationRefreshMode(mutation) {
                 return monkeytypeMutationRefreshMode(mutation);
             }
+        },
+        {
+            key: "keybr",
+            renderMode() {
+                return "overlay";
+            },
+            refreshOnContainerRebind: true,
+            observePromptMutations: false,
+            keybrHintLayout() {
+                return ["consistent", "extra-spacing"].includes(STATE.settings.keybr_hint_layout)
+                    ? STATE.settings.keybr_hint_layout
+                    : "extra-spacing";
+            },
+            matchesLocation() {
+                return location.hostname === "www.keybr.com" && /^\/?$/.test(location.pathname);
+            },
+            getPromptContainer() {
+                const container = document.querySelector("div.VWtF2mmR6I");
+                return container instanceof HTMLElement ? container : null;
+            },
+            getOverlayTypographyElement(container) {
+                const prompt = container instanceof HTMLElement ? container : this.getPromptContainer();
+                return prompt instanceof HTMLElement ? prompt : null;
+            },
+            getParagraphBoxes(container) {
+                if (!(container instanceof HTMLElement) || !isVisible(container)) return [];
+                container.classList.toggle("cch-keybr-prompt", this.keybrHintLayout() === "extra-spacing");
+                return [container];
+            },
+            getWordElements(container) {
+                if (!(container instanceof HTMLElement)) return [];
+
+                return Array.from(container.querySelectorAll(":scope > span"))
+                    .filter((el) => el instanceof HTMLElement)
+                    .filter(isVisible)
+                    .filter((el) => this.getWordText(el).length > 0);
+            },
+            getWordText(wordEl) {
+                return annotationFreeTextContent(wordEl)
+                    .replace(/\uE000/g, "")
+                    .trim();
+            },
+            buildPromptSignature(paragraphs, wordLists = null) {
+                const container = paragraphs[0];
+                if (!(container instanceof HTMLElement)) {
+                    return JSON.stringify({
+                        site: this.key,
+                        visibleWordCount: 0,
+                        text: ""
+                    });
+                }
+
+                const words = Array.isArray(wordLists) && Array.isArray(wordLists[0])
+                    ? wordLists[0]
+                    : this.getWordElements(container);
+                const texts = words.map((word) =>
+                    wordRecordText(word)
+                        .replace(/\s+/g, " ")
+                        .trim()
+                );
+
+                return JSON.stringify({
+                    site: this.key,
+                    visibleWordCount: words.length,
+                    text: texts.join(" ")
+                });
+            }
         }
     ];
 
@@ -182,6 +249,9 @@
             : merged.chordable_word_display === "highlight-only"
                 ? "hover"
                 : "always";
+        merged.keybr_hint_layout = ["consistent", "extra-spacing"].includes(merged.keybr_hint_layout)
+            ? merged.keybr_hint_layout
+            : "extra-spacing";
         delete merged.chordable_word_display;
 
         return merged;
@@ -189,6 +259,13 @@
 
     function currentSiteAdapter() {
         return SITE_ADAPTERS.find((adapter) => adapter.matchesLocation()) || null;
+    }
+
+    function adapterRenderMode(adapter = currentSiteAdapter()) {
+        if (!adapter) return "inline";
+        return typeof adapter.renderMode === "function"
+            ? adapter.renderMode()
+            : adapter.renderMode || "inline";
     }
 
     function isVisible(el) {
@@ -415,6 +492,11 @@
     }
 
     function wordTextFromElement(wordEl) {
+        const adapter = currentSiteAdapter();
+        if (adapter?.getWordText) {
+            return adapter.getWordText(wordEl);
+        }
+
         return annotationFreeTextContent(wordEl).trim();
     }
 
@@ -461,9 +543,12 @@
         return adapter.buildPromptSignature(resolvedParagraphs, wordLists);
     }
 
-    function clearAnnotationsWithin(root) {
+    function clearAnnotationsWithin(root, clearSiteClasses = false) {
         if (!(root instanceof Element)) return;
 
+        if (clearSiteClasses) {
+            root.classList.remove("cch-keybr-prompt");
+        }
         root.classList.remove("cch-debug-parent");
         root.querySelectorAll(".cch-hint-label").forEach((el) => el.remove());
 
@@ -495,6 +580,14 @@
 
     function syncOverlayTypography(root) {
         if (!(root instanceof HTMLElement)) return;
+
+        const adapter = currentSiteAdapter();
+        const promptContainer = adapter?.getPromptContainer?.();
+        const typographyElement = adapter?.getOverlayTypographyElement?.(promptContainer);
+        if (typographyElement instanceof HTMLElement) {
+            root.style.fontSize = getComputedStyle(typographyElement).fontSize;
+            return;
+        }
 
         const typingTest = document.querySelector("#typingTest");
         if (typingTest instanceof HTMLElement) {
@@ -778,6 +871,10 @@
         }
 
         const label = createHintLabel(match.entries);
+        const adapter = currentSiteAdapter();
+        if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
+            label.classList.add("cch-keybr-overlay-extra-spacing");
+        }
         label.style.left = STATE.settings.hint_position === "center"
             ? `${rect.left + rect.width / 2}px`
             : `${rect.left}px`;
@@ -866,7 +963,7 @@
         STATE.scheduledForce = false;
 
         if (!STATE.settings.enabled || !STATE.dictionary) {
-            STATE.trackedParagraphs.forEach(clearAnnotationsWithin);
+            STATE.trackedParagraphs.forEach((paragraph) => clearAnnotationsWithin(paragraph, true));
             STATE.trackedParagraphs = [];
             removeOverlayAnnotations();
             log("Annotation skipped", {
@@ -878,7 +975,7 @@
 
         const adapter = currentSiteAdapter();
         if (!adapter) {
-            STATE.trackedParagraphs.forEach(clearAnnotationsWithin);
+            STATE.trackedParagraphs.forEach((paragraph) => clearAnnotationsWithin(paragraph, true));
             STATE.trackedParagraphs = [];
             STATE.lastPromptSignature = "";
             removeOverlayAnnotations();
@@ -891,7 +988,7 @@
 
         const paragraphs = getParagraphBoxes();
         STATE.trackedParagraphs = paragraphs;
-        const renderMode = adapter.renderMode || "inline";
+        const renderMode = adapterRenderMode(adapter);
         if (renderMode === "overlay") {
             clearOverlayAnnotations();
             syncOverlayTypography(getOverlayRoot());
@@ -1032,6 +1129,13 @@
             return;
         }
 
+        STATE.observedPromptContainer = container;
+
+        if (adapter.observePromptMutations === false) {
+            STATE.promptObserver = null;
+            return;
+        }
+
         STATE.promptObserver = new MutationObserver((mutations) => {
             let sawRelevantChange = false;
             let shouldAnnotateDirectly = false;
@@ -1065,7 +1169,6 @@
 
         STATE.promptObserver.observe(container, adapter.observerConfig());
 
-        STATE.observedPromptContainer = container;
         log("Observing prompt container", {
             site: adapter.key,
             container
@@ -1073,6 +1176,7 @@
     }
 
     function ensurePromptObserverTarget() {
+        const adapter = currentSiteAdapter();
         const nextContainer = getPromptContainer();
 
         if (!nextContainer) {
@@ -1090,6 +1194,11 @@
         }
 
         observePromptContainer(nextContainer);
+        if (adapter?.refreshOnContainerRebind) {
+            scheduleAnnotation(true);
+            return;
+        }
+
         handlePotentialPromptChange("prompt-container-rebound");
     }
 
@@ -1226,7 +1335,7 @@
         });
 
         window.addEventListener("resize", () => {
-            if (currentSiteAdapter()?.renderMode === "overlay") {
+            if (adapterRenderMode() === "overlay") {
                 if (!STATE.overlayRoot?.childElementCount || !STATE.observedPromptContainer?.isConnected) {
                     return;
                 }

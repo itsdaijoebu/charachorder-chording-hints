@@ -151,6 +151,9 @@
             : settings.chordable_word_display === "highlight-only"
                 ? "hover"
                 : "always";
+        settings.keybr_hint_layout = ["consistent", "extra-spacing"].includes(settings.keybr_hint_layout)
+            ? settings.keybr_hint_layout
+            : "extra-spacing";
         delete settings.chordable_word_display;
         return settings;
     }

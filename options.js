@@ -45,6 +45,7 @@
         showDebugOutline: document.getElementById("showDebugOutline"),
         debugLogging: document.getElementById("debugLogging"),
         showExtendedSpecialDescriptions: document.getElementById("showExtendedSpecialDescriptions"),
+        keybrHintLayout: document.getElementById("keybrHintLayout"),
 
         // descDupAll: document.getElementById("desc_dup_all"),
         // descDupLeft: document.getElementById("desc_dup_left"),
@@ -307,6 +308,9 @@
             : settings.chordable_word_display === "highlight-only"
                 ? "hover"
                 : "always";
+        settings.keybr_hint_layout = ["consistent", "extra-spacing"].includes(settings.keybr_hint_layout)
+            ? settings.keybr_hint_layout
+            : "extra-spacing";
         delete settings.chordable_word_display;
 
         return settings;
@@ -901,6 +905,9 @@
                 : defaults.hint_text_font_size_em,
             hint_position: els.hintPosition.value === "center" ? "center" : "left",
             hint_display: els.hintDisplay.value === "hover" ? "hover" : "always",
+            keybr_hint_layout: ["consistent", "extra-spacing"].includes(els.keybrHintLayout.value)
+                ? els.keybrHintLayout.value
+                : "extra-spacing",
 
             hotkeys: CCHShared.normalizeHotkeys(optionHotkeys),
 
@@ -970,6 +977,7 @@
         els.hintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
         els.hintPosition.value = settings.hint_position || "left";
         els.hintDisplay.value = settings.hint_display || "always";
+        els.keybrHintLayout.value = settings.keybr_hint_layout || "extra-spacing";
         syncHintTextSizeFieldBehavior();
 
         // els.descDupAll.value = settings.specialTokenDescriptions.dup_all || "";

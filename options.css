@@ -786,6 +786,7 @@ input[type="color"]::-moz-color-swatch {
   background: var(--cch-card-bg);
   color: var(--cch-text);
   box-shadow: var(--cch-card-shadow);
+  white-space: pre-line;
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px);

@@ -892,6 +892,7 @@
       hint_text_font_size_em: 0.5,
       hint_position: "left",
       hint_display: "always",
+      keybr_hint_layout: "extra-spacing",
       hotkeys: defaultHotkeys()
     };
   }

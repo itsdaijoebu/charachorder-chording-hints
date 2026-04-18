@@ -150,7 +150,7 @@
         <label class="fieldLabel" for="hintTextLightModeColor"><span>Light mode text color</span><input id="hintTextLightModeColor" type="color"></label>
         <label class="fieldLabel" for="hintBoxLightModeOpacity"><span>Light mode box opacity</span><input id="hintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
         <label class="fieldLabel appearanceFullRow" for="hintTextFontSizeValue">
-          <span class="labelWithTooltip tooltipable" data-tooltip="em scales with the surrounding font size, while px is a fixed pixel size. Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">
+          <span class="labelWithTooltip tooltipable" data-tooltip="em:&#10;Scales with the surrounding font size.&#10;&#10;px:&#10;Fixed pixel size.&#10;&#10;Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">
             <span>Hint text size</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
@@ -170,7 +170,7 @@
           </select>
         </label>
         <label class="fieldLabel appearanceFullRow" for="hintDisplay">
-          <span class="labelWithTooltip tooltipable" data-tooltip="Show or hide chord input by default. When hidden, chord input displays on hover. Click any hint box to toggle it.">
+          <span class="labelWithTooltip tooltipable" data-tooltip="Show:&#10;Show chord input by default. &#10;&#10;Hide:&#10;Hides chord input by default, but shows it on hover.&#10;&#10;Click any hint box to toggle between display modes.">
             <span>Hint display</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
@@ -223,6 +223,23 @@
         <label class="check" for="showDebugOutline"><input id="showDebugOutline" type="checkbox"><span>Show debug outlines</span></label>
         <label class="check" for="debugLogging"><input id="debugLogging" type="checkbox"><span>Enable debug logging</span></label>
                 <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions" type="checkbox"><span>Show extended special-token descriptions</span></label>
+      </div>
+    </section>
+
+
+    <section class="card">
+      <h2>Keybr-Specific Options</h2>
+      <div class="field_grid compactFields">
+        <label class="fieldLabel appearanceFullRow" for="keybrHintLayout">
+          <span class="labelWithTooltip tooltipable" data-tooltip="Regular Spacing:&#10;Keeps Keybr's normal row spacing, but Keybr's tight rows may cause hints to overlap text on other lines.&#10;&#10;Extra Spacing:&#10;Adds room for hints, but causes Keybr's progress cursor to start at the top of the first word. Recommended.">
+            <span>Keybr hint layout</span>
+            <span class="tooltipIcon" aria-hidden="true"></span>
+          </span>
+          <select id="keybrHintLayout">
+            <option value="extra-spacing">Extra Spacing</option>
+            <option value="consistent">Regular Spacing</option>
+          </select>
+        </label>
       </div>
     </section>
 

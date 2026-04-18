@@ -39,6 +39,18 @@ body.light {
   position: relative !important;
 }
 
+.cch-keybr-prompt > span {
+  margin-top: calc(var(--cch-label-font-size) + 0.35em);
+}
+
+.cch-keybr-prompt {
+  --cch-label-offset-y: -0.55em;
+}
+
+.cch-keybr-overlay-extra-spacing {
+  --cch-label-offset-y: -0.55em;
+}
+
 .cch-hint-label {
   position: absolute;
   left: 50%;
