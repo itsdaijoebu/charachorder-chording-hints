@@ -51,7 +51,7 @@ If, for whatever reason, you can't connect to your CCOS device:
 - **Keybr**: Keybr's normal spacing between lines is too small to easily accomodate chord hints, so by default, this extension adds a bit of space above each line. But due to some Keybr-side position calculations, this causes the typing cursor to start each section at the top of the first word instead of below it. It's not a big deal, but if you have any ideas about how to fix this, let me know. 
 
 ## Bug Reports, Suggestions, Feature Requests, Etc.
-If you have any issues, either use the tools that GitHub provides or find me on the official CharaChorder Discord channel.
+If you have any issues, you can let me know either by using the tools that GitHub provides or find me on the official CharaChorder Discord channel.
 
 ____
 
