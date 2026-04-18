@@ -35,7 +35,7 @@ You can also just download this repo (unzipping it if necessary, depending on ho
 
 ## Usage
 1. Go to any supported website
-2. Start a typing thingy (practice, test, whatever)
+2. Start a typing session
 3. See the chording hints!
 4. If you don't see the hints, click on the extension icon in your toolbar and make sure it's on (the Power button should be green).
 
@@ -44,10 +44,10 @@ You can also just download this repo (unzipping it if necessary, depending on ho
 If, for whatever reason, you can't connect to your CCOS device:
 1. Export your chord library to a JSON format (likely from [the CharaChorder.io site](https://master.dev.charachorder.io/config/chords/)
 2. From this extension's Options page, find your JSON chord file via the `Choose File` button next to the `Import JSON` button
-3. `Import JSON` and wait for your chords to load.
+3. `Import JSON` and wait for your chords to load
 
 ## Known Issues and Limitations
-- **No Affixes**: Currently only matches exact words only, so if you have the word "noun" in your chord library, but you don't have "nouns", and the word "nouns" shows up as a word in a training session, then you won't see a chord hint for it. Similarly, if you have "-tions" set up as a chordable-suffix but *not* as part of a compound chord, then this extension won't pick up on it. If you *do* have it as part of a compound chord though, then it will.   
+- **No Affixes**: Currently only matches exact words only, so if you have the word "noun" in your chord library, but you don't have "nouns", and the word "nouns" shows up as a word in a training session, then you won't see a chord hint for it. Similarly, if you have "-tions" set up as a chordable-suffix but *not* as part of a compound chord, then this extension won't pick up on it. Compound chords work just fine, though.   
 - **Keybr**: Keybr's normal spacing between lines is too small to easily accomodate chord hints, so by default, this extension adds a bit of space above each line. But due to some Keybr-side position calculations, this causes the typing cursor to start each section at the top of the first word instead of below it. It's not a big deal, but if you have any ideas about how to fix this, let me know. 
 
 ## Bug Reports, Suggestions, Feature Requests, Etc.
