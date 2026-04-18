@@ -5,7 +5,9 @@ Chrome extension that loads Charachorder chords to an internal library, either v
 Currently works with:
 - [Entertrained](https://www.entertrained.app)
 - [MonkeyType](https://www.monkeytype.com)
-- [Keybr (practice mode only)](https://www.keybr.com)
+- [Keybr (Practice mode only)](https://www.keybr.com)
+
+Note that using this extension with Keybr places the cursor in a weird place at the beginning of each set, but it moves back to its normal place once you start typing. Details below. 
 
 <img src="readme_images/cch-hero.png" alt="main-promo-image" width="640">
 <img src="readme_images/cch-splitscreen.png" alt="splitscreen-promo-image" width="640">
@@ -43,6 +45,9 @@ If, for whatever reason, you can't connect to your CCOS device:
 1. Export your chord library to a JSON format (likely from [the CharaChorder.io site](https://master.dev.charachorder.io/config/chords/)
 2. From this extension's Options page, find your JSON chord file via the `Choose File` button next to the `Import JSON` button
 3. `Import JSON` and wait for your chords to load.
+
+## Known Issues
+- **Keybr**: Keybr's normal spacing between lines is too small to easily accomodate chord hints, so by default, this extension adds a bit of space above each line. But due to some Keybr-side position calculations, this causes the typing cursor to start each section at the top of the first word instead of below it. It's not a big deal, but if you have any ideas about how to fix this, let me know. 
 
 ## Bug Reports, Suggestions, Feature Requests, Etc.
 If you have any issues, either use the tools that GitHub provides or find me on the official CharaChorder Discord channel.

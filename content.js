@@ -170,6 +170,10 @@
                 const container = document.querySelector("div.VWtF2mmR6I");
                 return container instanceof HTMLElement ? container : null;
             },
+            getOverlayRootParent() {
+                const parent = document.querySelector("div.d7mouSz05B");
+                return parent instanceof HTMLElement ? parent : null;
+            },
             getOverlayTypographyElement(container) {
                 const prompt = container instanceof HTMLElement ? container : this.getPromptContainer();
                 return prompt instanceof HTMLElement ? prompt : null;
@@ -566,16 +570,53 @@
         });
     }
 
-    function getOverlayRoot() {
-        if (STATE.overlayRoot?.isConnected) return STATE.overlayRoot;
-        if (!document.body) return null;
+    function getOverlayRootParent() {
+        const adapter = currentSiteAdapter();
+        const parent = adapter?.getOverlayRootParent?.();
+        if (parent instanceof HTMLElement) return parent;
+        return document.body instanceof HTMLElement ? document.body : null;
+    }
 
+    function getOverlayRoot() {
+        const parent = getOverlayRootParent();
+        if (!parent) return null;
+
+        if (STATE.overlayRoot?.isConnected && STATE.overlayRoot.parentElement === parent) {
+            return STATE.overlayRoot;
+        }
+
+        STATE.overlayRoot?.remove();
         const root = document.createElement("div");
         root.className = "cch-overlay-root";
+        if (parent !== document.body) {
+            root.classList.add("cch-overlay-root-contained");
+        }
         root.setAttribute("aria-hidden", "true");
-        document.body.appendChild(root);
+        parent.appendChild(root);
         STATE.overlayRoot = root;
         return root;
+    }
+
+    function overlayPositionFromViewportRect(root, rect) {
+        if (!(root instanceof HTMLElement) || !root.classList.contains("cch-overlay-root-contained")) {
+            return {
+                left: rect.left,
+                top: rect.top,
+                width: rect.width
+            };
+        }
+
+        const rootRect = root.getBoundingClientRect();
+        const scaleX = root.offsetWidth > 0 ? rootRect.width / root.offsetWidth : 1;
+        const scaleY = root.offsetHeight > 0 ? rootRect.height / root.offsetHeight : 1;
+        const safeScaleX = Number.isFinite(scaleX) && scaleX > 0 ? scaleX : 1;
+        const safeScaleY = Number.isFinite(scaleY) && scaleY > 0 ? scaleY : 1;
+
+        return {
+            left: (rect.left - rootRect.left) / safeScaleX,
+            top: (rect.top - rootRect.top) / safeScaleY,
+            width: rect.width / safeScaleX
+        };
     }
 
     function syncOverlayTypography(root) {
@@ -875,10 +916,11 @@
         if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
             label.classList.add("cch-keybr-overlay-extra-spacing");
         }
+        const overlayPosition = overlayPositionFromViewportRect(root, rect);
         label.style.left = STATE.settings.hint_position === "center"
-            ? `${rect.left + rect.width / 2}px`
-            : `${rect.left}px`;
-        label.style.top = `${rect.top}px`;
+            ? `${overlayPosition.left + overlayPosition.width / 2}px`
+            : `${overlayPosition.left}px`;
+        label.style.top = `${overlayPosition.top}px`;
         root.appendChild(label);
 
         if (!includeDebugSummary) {
