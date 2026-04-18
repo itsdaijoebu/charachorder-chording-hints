@@ -61,6 +61,17 @@ body.light {
   font-family: system-ui, sans-serif;
 }
 
+.cch-overlay-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483646;
+}
+
+.cch-overlay-root .cch-hint-label {
+  position: fixed;
+}
+
 .cch-hint-row {
   display: inline-flex;
   align-items: center;

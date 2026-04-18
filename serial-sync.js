@@ -466,15 +466,16 @@
           onProgress?.(`Syncing chordmap from device... ${index}/${entryCount}`);
         }
 
+        const responsePattern = new RegExp(`^CML\\s+C1\\s+${index}\\b`);
         const lines = await sendSerialCommand(
           port,
           `CML C1 ${index}`,
-          new RegExp(`^CML\\s+C1\\s+${index}\\b`),
+          responsePattern,
           SERIAL_ENTRY_TIMEOUT_MS
         );
 
         const combinedLines = combineSplitCmlLines(lines);
-        const line = combinedLines.find((candidate) => new RegExp(`^CML\\s+C1\\s+${index}\\b`).test(candidate));
+        const line = combinedLines.find((candidate) => responsePattern.test(candidate));
         const parsed = parseCmlC1Line(line);
 
         if (!parsed) {

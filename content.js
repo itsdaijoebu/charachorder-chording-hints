@@ -17,12 +17,14 @@
         promptRefreshTimer: null,
         lastPromptSignature: "",
         containerRebindTimer: null,
-        maxLookupWordCount: 1
+        maxLookupWordCount: 1,
+        overlayRoot: null
     };
 
     const SITE_ADAPTERS = [
         {
             key: "entertrained",
+            renderMode: "inline",
             matchesLocation() {
                 return (
                     location.hostname === "entertrained.app" &&
@@ -47,17 +49,19 @@
                     .filter((el) => el instanceof HTMLElement)
                     .filter(isVisible);
             },
-            buildPromptSignature(paragraphs) {
+            buildPromptSignature(paragraphs, wordLists = null) {
                 const normalizedParagraphs = paragraphs.map((paragraph) =>
-                    (paragraph.textContent || "")
+                    annotationFreeTextContent(paragraph)
                         .replace(/\s+/g, " ")
                         .trim()
                 );
 
-                const totalWords = paragraphs.reduce(
-                    (sum, paragraph) => sum + this.getWordElements(paragraph).length,
-                    0
-                );
+                const totalWords = Array.isArray(wordLists)
+                    ? wordLists.reduce((sum, words) => sum + words.length, 0)
+                    : paragraphs.reduce(
+                        (sum, paragraph) => sum + this.getWordElements(paragraph).length,
+                        0
+                    );
 
                 return JSON.stringify({
                     site: this.key,
@@ -80,6 +84,7 @@
         },
         {
             key: "monkeytype",
+            renderMode: "overlay",
             matchesLocation() {
                 return location.hostname === "monkeytype.com" && /^\/?$/.test(location.pathname);
             },
@@ -97,12 +102,11 @@
                 if (!(container instanceof HTMLElement)) return [];
 
                 const words = Array.from(container.querySelectorAll(":scope > .word"))
-                    .filter((el) => el instanceof HTMLElement)
-                    .filter(isVisible);
+                    .filter((el) => el instanceof HTMLElement && el.isConnected);
 
-                return filterWordsToContainerViewport(words, container);
+                return filterWordsToFirstRows(words, 3);
             },
-            buildPromptSignature(paragraphs) {
+            buildPromptSignature(paragraphs, wordLists = null) {
                 const container = paragraphs[0];
                 if (!(container instanceof HTMLElement)) {
                     return JSON.stringify({
@@ -112,9 +116,11 @@
                     });
                 }
 
-                const words = this.getWordElements(container);
+                const words = Array.isArray(wordLists) && Array.isArray(wordLists[0])
+                    ? wordLists[0]
+                    : this.getWordElements(container);
                 const texts = words.map((word) =>
-                    (word.textContent || "")
+                    annotationFreeTextContent(word)
                         .replace(/\s+/g, " ")
                         .trim()
                 );
@@ -139,7 +145,7 @@
                 };
             },
             mutationIsRelevant(mutation) {
-                return mutation.type === "childList";
+                return monkeytypeMutationIsRelevant(mutation);
             }
         }
     ];
@@ -206,27 +212,109 @@
         return words.filter((word) => rectsIntersect(word.getBoundingClientRect(), containerRect));
     }
 
+    function filterWordsToFirstRows(words, rowLimit) {
+        const rowTolerance = 2;
+        const rows = [];
+
+        for (const word of words) {
+            const rect = word.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) continue;
+
+            let row = rows.find((candidate) => Math.abs(candidate.top - rect.top) <= rowTolerance);
+            if (!row) {
+                row = {
+                    top: rect.top,
+                    words: []
+                };
+                rows.push(row);
+            }
+
+            row.words.push(word);
+        }
+
+        return rows
+            .sort((a, b) => a.top - b.top)
+            .slice(0, rowLimit)
+            .flatMap((row) => row.words);
+    }
+
+    function annotationFreeTextContent(root) {
+        if (!(root instanceof Node)) return "";
+
+        let text = "";
+        root.childNodes.forEach((child) => {
+            if (child instanceof Element && child.classList.contains("cch-hint-label")) {
+                return;
+            }
+
+            if (child.nodeType === Node.TEXT_NODE) {
+                text += child.textContent || "";
+                return;
+            }
+
+            text += annotationFreeTextContent(child);
+        });
+
+        return text;
+    }
+
     function readMonkeytypeWordIndex(word) {
         if (!(word instanceof HTMLElement)) return null;
 
-        const candidates = [
-            word.dataset.wordindex,
-            word.dataset.wordIndex,
-            word.dataset.woriindex,
-            word.dataset.woriIndex,
-            word.getAttribute("data-wordindex"),
-            word.getAttribute("data-woriindex")
-        ];
+        const value = word.getAttribute("data-wordindex");
+        if (value == null || value === "") return null;
 
-        for (const candidate of candidates) {
-            if (candidate == null || candidate === "") continue;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : String(value);
+    }
 
-            const parsed = Number(candidate);
-            if (Number.isFinite(parsed)) return parsed;
-            return String(candidate);
+    function wordIndexSignatureFromNodes(nodes) {
+        return Array.from(nodes || [])
+            .flatMap((node) => {
+                if (!(node instanceof Element)) return [];
+
+                if (node.classList.contains("word")) {
+                    const index = readMonkeytypeWordIndex(node);
+                    return index == null ? [] : [String(index)];
+                }
+
+                const word = node.closest(".word");
+                if (word instanceof HTMLElement) {
+                    const index = readMonkeytypeWordIndex(word);
+                    return index == null ? [] : [String(index)];
+                }
+
+                return Array.from(node.querySelectorAll(".word"))
+                    .map(readMonkeytypeWordIndex)
+                    .filter((index) => index != null)
+                    .map(String);
+            })
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+            .join("|");
+    }
+
+    function mutationTargetWord(mutation) {
+        const target = mutation.target;
+        if (!(target instanceof Element)) return null;
+        if (target.classList.contains("word")) return target;
+        const word = target.closest(".word");
+        return word instanceof HTMLElement ? word : null;
+    }
+
+    function monkeytypeMutationIsRelevant(mutation) {
+        if (mutation.type !== "childList") return false;
+
+        const addedSignature = wordIndexSignatureFromNodes(mutation.addedNodes);
+        const removedSignature = wordIndexSignatureFromNodes(mutation.removedNodes);
+
+        if (addedSignature || removedSignature) {
+            return addedSignature !== removedSignature;
         }
 
-        return null;
+        const word = mutationTargetWord(mutation);
+        if (word?.classList.contains("active")) return false;
+
+        return true;
     }
 
     function hexToRgba(hex, opacity) {
@@ -307,12 +395,12 @@
         return adapter.getWordElements(paragraph);
     }
 
-    function buildPromptSignature() {
+    function buildPromptSignature(paragraphs = null, wordLists = null) {
         const adapter = currentSiteAdapter();
         if (!adapter) return "";
 
-        const paragraphs = getParagraphBoxes();
-        return adapter.buildPromptSignature(paragraphs);
+        const resolvedParagraphs = Array.isArray(paragraphs) ? paragraphs : getParagraphBoxes();
+        return adapter.buildPromptSignature(resolvedParagraphs, wordLists);
     }
 
     function clearAnnotationsWithin(root) {
@@ -333,6 +421,41 @@
 
             delete el.dataset.cchAnnotated;
         });
+    }
+
+    function getOverlayRoot() {
+        if (STATE.overlayRoot?.isConnected) return STATE.overlayRoot;
+        if (!document.body) return null;
+
+        const root = document.createElement("div");
+        root.className = "cch-overlay-root";
+        root.setAttribute("aria-hidden", "true");
+        document.body.appendChild(root);
+        STATE.overlayRoot = root;
+        return root;
+    }
+
+    function syncOverlayTypography(root) {
+        if (!(root instanceof HTMLElement)) return;
+
+        const typingTest = document.querySelector("#typingTest");
+        if (typingTest instanceof HTMLElement) {
+            root.style.fontSize = getComputedStyle(typingTest).fontSize;
+            return;
+        }
+
+        root.style.removeProperty("font-size");
+    }
+
+    function clearOverlayAnnotations() {
+        if (STATE.overlayRoot?.isConnected) {
+            STATE.overlayRoot.replaceChildren();
+        }
+    }
+
+    function removeOverlayAnnotations() {
+        STATE.overlayRoot?.remove();
+        STATE.overlayRoot = null;
     }
 
     function is_left_variant(token_key) {
@@ -498,26 +621,17 @@
         return { matched: false, reason: "no-dictionary-match", word: rawText, normalized };
     }
 
-    function annotateMatch(words, startIndex, match) {
-        const wordEl = words[startIndex];
-        wordEl.querySelectorAll(":scope > .cch-hint-label").forEach((existing) => existing.remove());
-
-        if (getComputedStyle(wordEl).position === "static") {
-            wordEl.dataset.cchOriginalPosition = "static";
-            wordEl.style.position = "relative";
-        }
-
+    function createHintLabel(entries) {
         const label = document.createElement("span");
         label.className = "cch-hint-label";
-        if (match.entries.length > 1) {
+        if (entries.length > 1) {
             label.classList.add("cch-multiple");
         }
-        label.appendChild(renderHintRows(match.entries));
+        label.appendChild(renderHintRows(entries));
+        return label;
+    }
 
-        wordEl.classList.add("cch-host");
-        wordEl.dataset.cchAnnotated = "true";
-        wordEl.prepend(label);
-
+    function summarizeMatch(words, startIndex, match) {
         return {
             matched: true,
             word: match.word,
@@ -531,27 +645,85 @@
         };
     }
 
-    function annotateParagraph(paragraph, paragraphIndex) {
+    function annotateInlineMatch(words, startIndex, match, includeDebugSummary = false) {
+        const wordEl = words[startIndex];
+
+        if (getComputedStyle(wordEl).position === "static") {
+            wordEl.dataset.cchOriginalPosition = "static";
+            wordEl.style.position = "relative";
+        }
+
+        const label = createHintLabel(match.entries);
+
+        wordEl.classList.add("cch-host");
+        wordEl.dataset.cchAnnotated = "true";
+        wordEl.prepend(label);
+
+        if (!includeDebugSummary) {
+            return null;
+        }
+
+        return summarizeMatch(words, startIndex, match);
+    }
+
+    function annotateOverlayMatch(words, startIndex, match, includeDebugSummary = false) {
+        const wordEl = words[startIndex];
+        const root = getOverlayRoot();
+        if (!root) return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
+
+        const rect = wordEl.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) {
+            return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
+        }
+
+        const label = createHintLabel(match.entries);
+        label.style.left = `${rect.left + rect.width / 2}px`;
+        label.style.top = `${rect.top}px`;
+        root.appendChild(label);
+
+        if (!includeDebugSummary) {
+            return null;
+        }
+
+        return summarizeMatch(words, startIndex, match);
+    }
+
+    function annotateMatch(words, startIndex, match, renderMode, includeDebugSummary = false) {
+        if (renderMode === "overlay") {
+            return annotateOverlayMatch(words, startIndex, match, includeDebugSummary);
+        }
+
+        return annotateInlineMatch(words, startIndex, match, includeDebugSummary);
+    }
+
+    function annotateParagraph(paragraph, paragraphIndex, discoveredWords = null, renderMode = "inline") {
         clearAnnotationsWithin(paragraph);
 
         if (STATE.settings.showDebugOutline) {
             paragraph.classList.add("cch-debug-parent");
         }
 
-        const words = getWordElements(paragraph);
-        const activeWords = words.filter((word) => word.classList.contains("active")).length;
-        const letterCurrentCount = paragraph.querySelectorAll(".letter.current, letter.current").length;
-
-        const matches = [];
-        const misses = [];
+        const words = Array.isArray(discoveredWords) ? discoveredWords : getWordElements(paragraph);
+        const includeDebugSummary = STATE.settings.debugLogging;
+        const matches = includeDebugSummary ? [] : null;
+        const misses = includeDebugSummary ? [] : null;
+        let matchedCount = 0;
+        let unmatchedCount = 0;
 
         for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
             const result = findMatchFromWords(words, wordIndex);
             if (result.matched) {
-                matches.push(annotateMatch(words, wordIndex, result));
+                matchedCount += 1;
+                const matchSummary = annotateMatch(words, wordIndex, result, renderMode, includeDebugSummary);
+                if (includeDebugSummary) {
+                    matches.push(matchSummary);
+                }
                 wordIndex += result.wordCount - 1;
             } else {
-                misses.push(result);
+                unmatchedCount += 1;
+                if (includeDebugSummary) {
+                    misses.push(result);
+                }
             }
         }
 
@@ -559,26 +731,30 @@
             site: currentSiteAdapter()?.key || "unknown",
             paragraphIndex,
             wordCount: words.length,
-            activeWordCount: activeWords,
-            currentLetterCount: letterCurrentCount,
-            matchedCount: matches.length,
-            unmatchedCount: misses.length,
-            wordSample: words.slice(0, 12).map((word) => (word.textContent || "").trim()),
-            matchSample: matches.slice(0, 8).map((m) => ({
+            matchedCount,
+            unmatchedCount
+        };
+
+        if (includeDebugSummary) {
+            summary.activeWordCount = words.filter((word) => word.classList.contains("active")).length;
+            summary.currentLetterCount = paragraph.querySelectorAll(".letter.current").length;
+            summary.wordSample = words.slice(0, 12).map((word) => annotationFreeTextContent(word).trim());
+            summary.matchSample = matches.slice(0, 8).map((m) => ({
                 word: m.word,
                 hint: m.hint,
                 active: m.active,
                 matchCount: m.matchCount,
                 wordCount: m.wordCount
-            })),
-            missSample: misses.slice(0, 8).map((m) => ({
+            }));
+            summary.missSample = misses.slice(0, 8).map((m) => ({
                 word: m.word,
                 normalized: m.normalized || "",
                 reason: m.reason
-            }))
-        };
+            }));
 
-        log("Paragraph annotation summary", summary);
+            log("Paragraph annotation summary", summary);
+        }
+
         return summary;
     }
 
@@ -589,6 +765,7 @@
         if (!STATE.settings.enabled || !STATE.dictionary) {
             STATE.trackedParagraphs.forEach(clearAnnotationsWithin);
             STATE.trackedParagraphs = [];
+            removeOverlayAnnotations();
             log("Annotation skipped", {
                 enabled: STATE.settings.enabled,
                 hasDictionary: Boolean(STATE.dictionary),
@@ -601,6 +778,7 @@
             STATE.trackedParagraphs.forEach(clearAnnotationsWithin);
             STATE.trackedParagraphs = [];
             STATE.lastPromptSignature = "";
+            removeOverlayAnnotations();
             log("No active site adapter for current page", {
                 hostname: location.hostname,
                 pathname: location.pathname
@@ -610,30 +788,45 @@
 
         const paragraphs = getParagraphBoxes();
         STATE.trackedParagraphs = paragraphs;
+        const renderMode = adapter.renderMode || "inline";
+        if (renderMode === "overlay") {
+            clearOverlayAnnotations();
+            syncOverlayTypography(getOverlayRoot());
+        } else {
+            removeOverlayAnnotations();
+        }
 
-        log("Paragraph discovery", {
-            site: adapter.key,
-            paragraphCount: paragraphs.length,
-            paragraphSamples: paragraphs.slice(0, 5).map((paragraph, index) => ({
-                paragraphIndex: index,
-                className: paragraph.className || "",
-                wordCount: getWordElements(paragraph).length,
-                sampleText: (paragraph.textContent || "").trim().slice(0, 160)
-            }))
-        });
+        const wordLists = paragraphs.map((paragraph) => getWordElements(paragraph));
+        const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordLists);
+
+        if (STATE.settings.debugLogging) {
+            log("Paragraph discovery", {
+                site: adapter.key,
+                paragraphCount: paragraphs.length,
+                paragraphSamples: paragraphs.slice(0, 5).map((paragraph, index) => ({
+                    paragraphIndex: index,
+                    className: paragraph.className || "",
+                    wordCount: wordLists[index]?.length || 0,
+                    sampleText: annotationFreeTextContent(paragraph).trim().slice(0, 160)
+                }))
+            });
+        }
 
         if (!paragraphs.length) {
-            STATE.lastPromptSignature = buildPromptSignature();
+            STATE.lastPromptSignature = nextPromptSignature;
             STATE.trackedParagraphs = [];
+            clearOverlayAnnotations();
             log("No prompt containers/paragraphs found for current adapter", { site: adapter.key });
             return;
         }
 
-        const summaries = paragraphs.map((paragraph, index) => annotateParagraph(paragraph, index));
+        const summaries = paragraphs.map((paragraph, index) =>
+            annotateParagraph(paragraph, index, wordLists[index], renderMode)
+        );
         const totalWords = summaries.reduce((sum, item) => sum + item.wordCount, 0);
         const totalMatches = summaries.reduce((sum, item) => sum + item.matchedCount, 0);
 
-        STATE.lastPromptSignature = buildPromptSignature();
+        STATE.lastPromptSignature = nextPromptSignature;
 
         log("Annotation pass complete", {
             site: adapter.key,
@@ -695,6 +888,34 @@
         }, 80);
     }
 
+    function isAnnotationNode(node) {
+        return node instanceof Element && (
+            node.classList.contains("cch-overlay-root") ||
+            node.classList.contains("cch-hint-label") ||
+            node.closest(".cch-overlay-root") !== null ||
+            node.closest(".cch-hint-label") !== null
+        );
+    }
+
+    function mutationOnlyTouchesAnnotations(mutation) {
+        if (mutation.type !== "childList") return false;
+
+        const changedNodes = [
+            ...Array.from(mutation.addedNodes || []),
+            ...Array.from(mutation.removedNodes || [])
+        ];
+
+        return changedNodes.length > 0 && changedNodes.every(isAnnotationNode);
+    }
+
+    function mutationTargetsObservedPromptContainer(mutation) {
+        return (
+            STATE.observedPromptContainer instanceof Node &&
+            mutation.target instanceof Node &&
+            STATE.observedPromptContainer.contains(mutation.target)
+        );
+    }
+
     function observePromptContainer(container) {
         if (STATE.promptObserver) {
             STATE.promptObserver.disconnect();
@@ -711,6 +932,10 @@
             let sawRelevantChange = false;
 
             for (const mutation of mutations) {
+                if (mutationOnlyTouchesAnnotations(mutation)) {
+                    continue;
+                }
+
                 if (adapter.mutationIsRelevant(mutation)) {
                     sawRelevantChange = true;
                     break;
@@ -758,6 +983,14 @@
             let sawChildListChange = false;
 
             for (const mutation of mutations) {
+                if (mutationOnlyTouchesAnnotations(mutation)) {
+                    continue;
+                }
+
+                if (mutationTargetsObservedPromptContainer(mutation)) {
+                    continue;
+                }
+
                 if (mutation.type === "childList") {
                     sawChildListChange = true;
                     break;
@@ -793,7 +1026,7 @@
     }
 
     function hotkeyMatches(event, rawHotkey) {
-        const hotkey = CCHShared.normalizeHotkeys({ forceRefresh: rawHotkey }).forceRefresh;
+        const hotkey = rawHotkey || CCHShared.defaultHotkeys().forceRefresh;
         return (
             event.altKey === hotkey.altKey &&
             event.ctrlKey === hotkey.ctrlKey &&
@@ -873,6 +1106,12 @@
         window.addEventListener("pageshow", () => {
             ensurePromptObserverTarget();
             handlePotentialPromptChange("pageshow");
+        });
+
+        window.addEventListener("resize", () => {
+            if (currentSiteAdapter()?.renderMode === "overlay") {
+                scheduleAnnotation(true);
+            }
         });
     }
 
