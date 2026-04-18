@@ -427,6 +427,10 @@
         return wordTextFromElement(wordRecordElement(word));
     }
 
+    function wordRecordHasLookupText(word) {
+        return Boolean(CCHShared.normalizeTokenForLookup(wordRecordText(word)));
+    }
+
     function wordRecordRect(word) {
         if (word?.rect && typeof word.rect.width === "number" && typeof word.rect.height === "number") {
             return word.rect;
@@ -616,6 +620,11 @@
     }
 
     function findMatchFromWords(words, startIndex) {
+        if (!wordRecordHasLookupText(words[startIndex])) {
+            const rawText = wordRecordText(words[startIndex]);
+            return { matched: false, reason: "empty-normalized", word: rawText };
+        }
+
         const maxWordCount = Math.min(
             STATE.maxLookupWordCount || 1,
             words.length - startIndex
@@ -630,6 +639,10 @@
         }
 
         for (let wordCount = maxWordCount; wordCount >= 1; wordCount -= 1) {
+            if (!wordRecordHasLookupText(words[startIndex + wordCount - 1])) {
+                continue;
+            }
+
             const rawText = phraseTexts[wordCount];
             const normalized = CCHShared.normalizeTokenForLookup(rawText);
 
