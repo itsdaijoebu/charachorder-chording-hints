@@ -5,17 +5,18 @@ Chrome extension that loads Charachorder chords to an internal library, either v
 Currently works with:
 - [Entertrained](https://www.entertrained.app)
 - [MonkeyType](https://www.monkeytype.com)
+- [Keybr (practice mode only)](https://www.keybr.com)
 
 <img src="readme_images/cch-hero.png" alt="main-promo-image" width="640">
 <img src="readme_images/cch-splitscreen.png" alt="splitscreen-promo-image" width="640">
 
 
 ## Installation
-Getting it from the [Chrome Web Store](https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn) would be the easiest method that'll also keep the extension up-to-date.
+Getting it from the [Chrome Web Store](https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn) would be the easiest method for installation and ensuring the extension stays up-to-date.
 
 <a href="https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn"><img src="readme_images/chrome_store.png" alt="Support me on Ko-Fi" width="160"></a>
 
-That said, MonkeyType support is still pending review for the web store version. 
+That said, MonkeyType and Keybr support are still pending review for the web store version. 
 
 You can also just download this repo (unzipping it if necessary, depending on how you downloaded it). After that:
 
