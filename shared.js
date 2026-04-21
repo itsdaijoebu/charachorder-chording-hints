@@ -457,6 +457,22 @@
     return (a.index ?? 0) - (b.index ?? 0);
   }
 
+  function deriveAffixType(outputCodes) {
+    const safeOutputCodes = Array.isArray(outputCodes) ? outputCodes : [];
+    const hasLeadingJoin = safeOutputCodes[0] === 574;
+    const hasTrailingInhibitConcatenator = safeOutputCodes[safeOutputCodes.length - 1] === 256;
+
+    if (hasLeadingJoin && !hasTrailingInhibitConcatenator) {
+      return "suffix";
+    }
+
+    if (!hasLeadingJoin && hasTrailingInhibitConcatenator) {
+      return "prefix";
+    }
+
+    return "any";
+  }
+
   function buildEntry({
     index,
     inputCodes,
@@ -489,6 +505,7 @@
     const outputText = visibleOutputText(safeOutputCodes);
     const normalizedOutput = normalizeOutputKey(outputText);
     const nonZeroInput = meaningfulInputCodes(safeInputCodes);
+    const affixType = deriveAffixType(safeOutputCodes);
 
     return {
       index,
@@ -513,7 +530,10 @@
         hasModifierLikeOutput: safeOutputCodes.some((code) => code > 126),
         outputLooksWordLike: /^[\p{L}\p{N}][\p{L}\p{N}'’.-]*$/u.test(outputText || ""),
         isCompoundInput: safeInputSegments.length > 1,
-        hasUnknownCompoundSegment: safeInputSegments.some((segment) => segment.kind === "unknown_compound")
+        hasUnknownCompoundSegment: safeInputSegments.some((segment) => segment.kind === "unknown_compound"),
+        hasLeadingJoin: safeOutputCodes[0] === 574,
+        hasTrailingInhibitConcatenator: safeOutputCodes[safeOutputCodes.length - 1] === 256,
+        affixType
       }
     };
   }
@@ -874,6 +894,8 @@
       selectionMode: "shortest",
       includeArpeggiates: false,
       includeModifierStyle: false,
+      enableSubstringHints: false,
+      minimumWordLength: 3,
       showDebugOutline: false,
       debugLogging: false,
       showExtendedSpecialDescriptions: true,
