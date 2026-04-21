@@ -11,7 +11,9 @@
 <main class="popupRoot">
     <section class="popupCard popupSyncCard">
         <div class="popupTopRow">
-            <button id="popupSyncButton" type="button" class="iconButton">Sync Chords <span class="icon settingsIcon" aria-hidden="true"></span>  Options Menu 
+            <button id="popupSyncButton" type="button" class="iconButton">Sync Chords <span class="icon settingsIcon"
+                                                                                            aria-hidden="true"></span>
+                Options Menu
             </button>
             <div class="popupEnabledSlot">
                 <button
@@ -33,7 +35,7 @@
         <h2>Appearance</h2>
         <div class="field_grid compactFields appearanceGrid">
             <div class="appearanceFullRow popupThemeControls">
-<!--                <span class="popupThemeLabel">Popup theme</span>-->
+                <!--                <span class="popupThemeLabel">Popup theme</span>-->
                 <label class="popupThemeToggleRow" for="popupThemeToggle">
                     <input id="popupUseSystemTheme" type="checkbox">
                     <span>Use system theme</span>
@@ -54,7 +56,7 @@
                     id="popupHintTextLightModeColor" type="color"></label>
             <label class="fieldLabel" for="popupHintBoxLightModeOpacity"><span>Light opacity</span><input
                     id="popupHintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
-            <label class="fieldLabel appearanceFullRow" for="popupHintTextFontSizeValue">
+            <label class="fieldLabel" for="popupHintTextFontSizeValue">
                 <span class="labelWithTooltip tooltipable"
                       data-tooltip="em:&#10;Scales with the surrounding font size.&#10;&#10;px:&#10;Fixed pixel size.&#10;&#10;Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">Hint text size <span
                         class="tooltipIcon" aria-hidden="true"></span></span>
@@ -74,7 +76,7 @@
                 </select>
             </label>
             <label class="fieldLabel" for="popupHintDisplay">
-                <span class="labelWithTooltip tooltipable"
+                <span class="labelWithTooltip tooltipable tooltipShiftLeft"
                       data-tooltip="Show:&#10;Show chord input by default. &#10;&#10;Hide:&#10;Hides chord input by default, but shows it on hover.&#10;&#10;Click any hint box to toggle between display modes.">Hint display <span
                         class="tooltipIcon" aria-hidden="true"></span></span>
                 <select id="popupHintDisplay">
@@ -87,7 +89,7 @@
                     <div class="popupPreviewCanvas">
                         <div id="popupDarkPreviewWord" class="popupPreviewWord">
                             <div id="popupDarkPreviewHint" class="popupPreviewHint">dark</div>
-                            <span id="popupDarkPreviewText" class="popupPreviewWordText">dark</span>
+                            <span id="popupDarkPreviewText" class="popupPreviewWordText">Dark</span>
                         </div>
                     </div>
                 </div>
@@ -95,41 +97,41 @@
                     <div class="popupPreviewCanvas">
                         <div id="popupLightPreviewWord" class="popupPreviewWord">
                             <div id="popupLightPreviewHint" class="popupPreviewHint">light</div>
-                            <span id="popupLightPreviewText" class="popupPreviewWordText">light</span>
+                            <span id="popupLightPreviewText" class="popupPreviewWordText">Light</span>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </section>
 
-    <section class="popupCard">
-        <h2>Behavior</h2>
-        <div class="field_grid compactFields">
-            <label class="popupCheck tooltipable" for="popupEnableSubstringHints"
-                   data-tooltip="May affect performance, especially with larger dictionaries.">
-                <input id="popupEnableSubstringHints" type="checkbox">
-                <span>Enable Substring Hints</span>
-                <span class="tooltipIcon" aria-hidden="true"></span>
-            </label>
-            <div class="popupBehaviorPair">
-                <label class="fieldLabel" for="popupMinimumWordLength">
-                    <span class="labelWithTooltip tooltipable"
-                          data-tooltip="The minimum length a word needs to be to trigger chord hints">Min word length <span
-                            class="tooltipIcon" aria-hidden="true"></span></span>
-                    <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
+        <section class="popupSubsection">
+            <h2>Behavior</h2>
+            <div class="field_grid compactFields">
+                <label class="popupCheck tooltipable tooltipOpenUpwards" for="popupEnableSubstringHints"
+                       data-tooltip="Enabled: When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater'&#10;&#10;May affect performance, so disable if causing slowdowns.">
+                    <input id="popupEnableSubstringHints" type="checkbox">
+                    <span>Enable Substring Hints</span>
+                    <span class="tooltipIcon" aria-hidden="true"></span>
                 </label>
-                <label class="fieldLabel" for="popupHintCharacterOrderMode">
-                    <span class="labelWithTooltip tooltipable"
-                          data-tooltip="Charachorder default shows chord characters in the official Charachorder GUI order. Best match reorders them to follow the output word as closely as possible.">Hint display <span
+                <div class="popupBehaviorPair">
+                    <label class="fieldLabel" for="popupHintCharacterOrderMode">
+                    <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                          data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
+                        Chord display order <span class="tooltipIcon" aria-hidden="true"></span></span>
+                        <select id="popupHintCharacterOrderMode">
+                            <option value="best-match">Best match</option>
+                            <option value="charachorder-default">CharaChorder default</option>
+                        </select>
+                    </label>
+                    <label class="fieldLabel" for="popupMinimumWordLength">
+                    <span class="labelWithTooltip tooltipable tooltipShiftLeft tooltipOpenUpwards"
+                          data-tooltip="The minimum length a word or substring needs to be to trigger chord hints">Min word length <span
                             class="tooltipIcon" aria-hidden="true"></span></span>
-                    <select id="popupHintCharacterOrderMode">
-                        <option value="best-match">Best match</option>
-                        <option value="charachorder-default">Charachorder default</option>
-                    </select>
-                </label>
+                        <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
+                    </label>
+                </div>
             </div>
-        </div>
+        </section>
     </section>
 
     <section class="popupSaveSettingsCard">

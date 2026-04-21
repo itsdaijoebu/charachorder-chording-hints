@@ -346,6 +346,16 @@
         return `rgba(${r}, ${g}, ${b}, ${safeOpacity})`;
     }
 
+    function previewHintTextForWord(word, mode) {
+        const safeWord = String(word || "").toLocaleLowerCase();
+        if (mode === "best-match") {
+            return safeWord;
+        }
+        return Array.from(safeWord)
+            .sort((left, right) => left.localeCompare(right))
+            .join("");
+    }
+
     function syncHintTextSizeFieldBehavior() {
         const unit = els.hintTextFontSizeUnit.value === "px" ? "px" : "em";
         const max = unit === "px" ? 64 : 4;

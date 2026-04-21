@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chording Hints",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Shows chord hints for CCOS devices like the CharaChorder on typing training sites to help learn chording libraries faster.",
   "permissions": ["storage"],
   "host_permissions": [

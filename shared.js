@@ -904,7 +904,7 @@
       selectionMode: "shortest",
       includeArpeggiates: false,
       includeModifierStyle: false,
-      enableSubstringHints: false,
+      enableSubstringHints: true,
       minimumWordLength: normalizeMinimumWordLength(3),
       hintCharacterOrderMode: normalizeHintCharacterOrderMode("best-match"),
       showDebugOutline: false,

@@ -12,6 +12,11 @@ Note that using this extension with Keybr places the cursor in a weird place at 
 <img src="readme_images/cch-hero.png" alt="main-promo-image" width="640">
 <img src="readme_images/cch-splitscreen.png" alt="splitscreen-promo-image" width="640">
 
+## Features
+- Shows you which words you have chords for in a typing training session. You can choose to either show the exact chord input or to hide the input but still be reminded that the word is chordable.
+- Shows every part of a word that's chordable. 
+  - Ex. If you run into the word "hippopotomonstrosesquippedaliophobia", but you don't have it in your chord library, but you ***do*** have "hippo" and "phobia", then you'll see hints for "hippo" and "phobia" anchored to the relevant parts of the word so you can chord "hippo", type out all the characters between that and "phobia", then chord "phobia".
+  - Also useful for seeing that you can chord "great", then hit the "er" modifier to turn it into "greater".
 
 ## Installation
 Getting it from the [Chrome Web Store](https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn) would be the easiest method for installation and ensuring the extension stays up-to-date.
@@ -44,8 +49,7 @@ If, for whatever reason, you can't connect to your CCOS device:
 2. From this extension's Options page, find your JSON chord file via the `Choose File` button next to the `Import JSON` button
 3. `Import JSON` and wait for your chords to load
 
-## Known Issues and Limitations
-- **No Affixes**: Currently only matches exact words only, so if you have the word "noun" in your chord library, but you don't have "nouns", and the word "nouns" shows up as a word in a training session, then you won't see a chord hint for it. Similarly, if you have "-tions" set up as a chordable-suffix but *not* as part of a compound chord, then this extension won't pick up on it. Compound chords work just fine, though.   
+## Known Issues and Limitations 
 - **Keybr**: Keybr's normal spacing between lines is too small to easily accomodate chord hints, so by default, this extension adds a bit of space above each line. But due to some Keybr-side position calculations, this causes the typing cursor to start each section at the top of the first word instead of below it. It's not a big deal, but if you have any ideas about how to fix this, let me know. 
 
 ## Bug Reports, Suggestions, Feature Requests, Etc.

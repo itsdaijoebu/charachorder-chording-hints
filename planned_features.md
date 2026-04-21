@@ -6,5 +6,4 @@ Though this doc is mainly for my own use, in case someone who uses this extensio
 - *none* (feel free to suggest any)
 
 ## Dictionary features
-- show hints for affixes (ex. -ment, pre-, re-, -able, etc)
 - be able to set preferred chord inputs for words with multiple chords
