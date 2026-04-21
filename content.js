@@ -18,7 +18,9 @@
         lastPromptSignature: "",
         containerRebindTimer: null,
         maxLookupWordCount: 1,
-        overlayRoot: null
+        overlayRoot: null,
+        substringLookup: null,
+        substringMatchCache: new Map()
     };
 
     const SITE_ADAPTERS = [
@@ -245,6 +247,10 @@
         };
 
         merged.hotkeys = CCHShared.normalizeHotkeys(merged.hotkeys);
+        merged.enableSubstringHints = Boolean(merged.enableSubstringHints);
+        merged.minimumWordLength = CCHShared.normalizeMinimumWordLength
+            ? CCHShared.normalizeMinimumWordLength(merged.minimumWordLength)
+            : Math.max(1, Math.floor(Number(merged.minimumWordLength)) || 3);
         merged.hint_position = ["left", "center"].includes(merged.hint_position)
             ? merged.hint_position
             : "left";
@@ -751,6 +757,267 @@
             1,
             ...normalizedOutputs.map((key) => String(key).split(/\s+/u).filter(Boolean).length)
         );
+        STATE.substringLookup = buildSubstringLookup();
+        STATE.substringMatchCache = new Map();
+    }
+
+    function minimumWordLength() {
+        return CCHShared.normalizeMinimumWordLength
+            ? CCHShared.normalizeMinimumWordLength(STATE.settings.minimumWordLength)
+            : Math.max(1, Math.floor(Number(STATE.settings.minimumWordLength)) || 3);
+    }
+
+    function phraseMeetsMinimumLength(rawText) {
+        const requiredLength = minimumWordLength();
+        const parts = String(rawText || "")
+            .split(/\s+/u)
+            .map((part) => CCHShared.normalizeTokenForLookup(part))
+            .filter(Boolean);
+
+        if (!parts.length) {
+            return false;
+        }
+
+        return parts.every((part) => Array.from(part).length >= requiredLength);
+    }
+
+    function buildSubstringLookup() {
+        const dictionary = STATE.dictionary;
+        if (!dictionary?.byNormalizedOutput) {
+            return {
+                byFirstCharacter: new Map(),
+                exactSingleWordMatches: new Set()
+            };
+        }
+
+        const byFirstCharacter = new Map();
+        const exactSingleWordMatches = new Set();
+
+        Object.entries(dictionary.byNormalizedOutput).forEach(([normalized, refs]) => {
+            const safeNormalized = String(normalized || "");
+            if (!safeNormalized || /\s/u.test(safeNormalized)) {
+                return;
+            }
+
+            exactSingleWordMatches.add(safeNormalized);
+
+            const refsByAffix = {
+                any: [],
+                prefix: [],
+                suffix: []
+            };
+
+            refs.forEach((ref) => {
+                const entry = dictionary.entries?.[ref];
+                const affixType = entry?.flags?.affixType || "any";
+                if (affixType === "prefix") {
+                    refsByAffix.prefix.push(ref);
+                } else if (affixType === "suffix") {
+                    refsByAffix.suffix.push(ref);
+                } else {
+                    refsByAffix.any.push(ref);
+                }
+            });
+
+            const firstCharacter = safeNormalized[0];
+            if (!firstCharacter) {
+                return;
+            }
+
+            const bucket = byFirstCharacter.get(firstCharacter) || [];
+            bucket.push({
+                normalized: safeNormalized,
+                length: safeNormalized.length,
+                refsByAffix
+            });
+            byFirstCharacter.set(firstCharacter, bucket);
+        });
+
+        byFirstCharacter.forEach((bucket) => {
+            bucket.sort((a, b) => {
+                if (b.length !== a.length) return b.length - a.length;
+                return a.normalized.localeCompare(b.normalized);
+            });
+        });
+
+        return { byFirstCharacter, exactSingleWordMatches };
+    }
+
+    function substringCacheKey(normalizedWord) {
+        return JSON.stringify({
+            normalizedWord,
+            selectionMode: STATE.settings.selectionMode,
+            includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
+            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle)
+        });
+    }
+
+    function applicableSubstringRefs(candidate, startIndex, endIndex, wordLength) {
+        const refs = [];
+        if (candidate.refsByAffix?.any?.length) {
+            refs.push(...candidate.refsByAffix.any);
+        }
+        if (startIndex === 0 && candidate.refsByAffix?.prefix?.length) {
+            refs.push(...candidate.refsByAffix.prefix);
+        }
+        if (endIndex === wordLength && candidate.refsByAffix?.suffix?.length) {
+            refs.push(...candidate.refsByAffix.suffix);
+        }
+        return refs;
+    }
+
+    function compareSubstringSolutions(a, b) {
+        if (a.coverage !== b.coverage) return a.coverage - b.coverage;
+        if (a.longestSegment !== b.longestSegment) return a.longestSegment - b.longestSegment;
+        if (a.segmentCount !== b.segmentCount) return b.segmentCount - a.segmentCount;
+        return b.firstStart - a.firstStart;
+    }
+
+    function solveBestSubstringCoverage(candidates) {
+        const sortedCandidates = candidates.slice().sort((a, b) => {
+            if (a.start !== b.start) return a.start - b.start;
+            if (b.length !== a.length) return b.length - a.length;
+            return a.normalized.localeCompare(b.normalized);
+        });
+
+        const memo = new Map();
+
+        function solve(index) {
+            if (index >= sortedCandidates.length) {
+                return {
+                    coverage: 0,
+                    longestSegment: 0,
+                    segmentCount: 0,
+                    firstStart: Number.POSITIVE_INFINITY,
+                    segments: []
+                };
+            }
+
+            if (memo.has(index)) {
+                return memo.get(index);
+            }
+
+            const skip = solve(index + 1);
+            const candidate = sortedCandidates[index];
+            let nextIndex = index + 1;
+            while (nextIndex < sortedCandidates.length && sortedCandidates[nextIndex].start < candidate.end) {
+                nextIndex += 1;
+            }
+
+            const includeTail = solve(nextIndex);
+            const include = {
+                coverage: candidate.length + includeTail.coverage,
+                longestSegment: Math.max(candidate.length, includeTail.longestSegment),
+                segmentCount: 1 + includeTail.segmentCount,
+                firstStart: candidate.start,
+                segments: [candidate, ...includeTail.segments]
+            };
+
+            const best = compareSubstringSolutions(include, skip) >= 0 ? include : skip;
+            memo.set(index, best);
+            return best;
+        }
+
+        return solve(0).segments;
+    }
+
+    function findSubstringMatchForWord(rawText, normalizedWord) {
+        if (!STATE.settings.enableSubstringHints) {
+            return { matched: false, reason: "substring-disabled", word: rawText, normalized: normalizedWord };
+        }
+
+        if (!phraseMeetsMinimumLength(rawText)) {
+            return { matched: false, reason: "below-minimum-length", word: rawText, normalized: normalizedWord };
+        }
+
+        if (STATE.substringLookup?.exactSingleWordMatches?.has(normalizedWord)) {
+            return { matched: false, reason: "exact-word-exists", word: rawText, normalized: normalizedWord };
+        }
+
+        const cacheKey = substringCacheKey(normalizedWord);
+        if (STATE.substringMatchCache.has(cacheKey)) {
+            const cached = STATE.substringMatchCache.get(cacheKey);
+            return cached
+                ? {
+                    matched: true,
+                    word: rawText,
+                    normalized: normalizedWord,
+                    labels: cached,
+                    wordCount: 1,
+                    isSubstringMatch: true
+                }
+                : { matched: false, reason: "no-substring-match", word: rawText, normalized: normalizedWord };
+        }
+
+        const seenCandidates = new Set();
+        const candidatePool = [];
+        for (const character of new Set(Array.from(normalizedWord))) {
+            const bucket = STATE.substringLookup?.byFirstCharacter?.get(character) || [];
+            for (const candidate of bucket) {
+                if (candidate.length >= normalizedWord.length) {
+                    continue;
+                }
+                if (seenCandidates.has(candidate.normalized)) {
+                    continue;
+                }
+                seenCandidates.add(candidate.normalized);
+                candidatePool.push(candidate);
+            }
+        }
+
+        const segments = [];
+        for (const candidate of candidatePool) {
+            let searchIndex = 0;
+            while (searchIndex < normalizedWord.length) {
+                const matchIndex = normalizedWord.indexOf(candidate.normalized, searchIndex);
+                if (matchIndex === -1) {
+                    break;
+                }
+
+                const endIndex = matchIndex + candidate.normalized.length;
+                const refs = applicableSubstringRefs(candidate, matchIndex, endIndex, normalizedWord.length);
+                if (refs.length) {
+                    const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
+                    if (chosen.length) {
+                        segments.push({
+                            start: matchIndex,
+                            end: endIndex,
+                            length: candidate.normalized.length,
+                            normalized: candidate.normalized,
+                            entries: chosen
+                        });
+                    }
+                }
+
+                searchIndex = matchIndex + 1;
+            }
+        }
+
+        const bestSegments = solveBestSubstringCoverage(segments).map((segment) => ({
+            entries: segment.entries,
+            normalized: segment.normalized,
+            anchor: {
+                type: "substring",
+                start: segment.start,
+                end: segment.end,
+                wordLength: normalizedWord.length
+            }
+        }));
+
+        STATE.substringMatchCache.set(cacheKey, bestSegments.length ? bestSegments : null);
+
+        if (!bestSegments.length) {
+            return { matched: false, reason: "no-substring-match", word: rawText, normalized: normalizedWord };
+        }
+
+        return {
+            matched: true,
+            word: rawText,
+            normalized: normalizedWord,
+            labels: bestSegments,
+            wordCount: 1,
+            isSubstringMatch: true
+        };
     }
 
     function findMatchFromWords(words, startIndex) {
@@ -780,7 +1047,7 @@
             const rawText = phraseTexts[wordCount];
             const normalized = CCHShared.normalizeTokenForLookup(rawText);
 
-            if (!normalized) {
+            if (!normalized || !phraseMeetsMinimumLength(rawText)) {
                 continue;
             }
 
@@ -804,8 +1071,9 @@
                 matched: true,
                 word: rawText,
                 normalized,
-                entries: chosen,
-                wordCount
+                labels: [{ entries: chosen, anchor: null }],
+                wordCount,
+                isSubstringMatch: false
             };
         }
 
@@ -816,7 +1084,12 @@
             return { matched: false, reason: "empty-normalized", word: rawText };
         }
 
-        return { matched: false, reason: "no-dictionary-match", word: rawText, normalized };
+        const substringResult = findSubstringMatchForWord(rawText, normalized);
+        if (substringResult.matched) {
+            return substringResult;
+        }
+
+        return { matched: false, reason: substringResult.reason || "no-dictionary-match", word: rawText, normalized };
     }
 
     function hintAlignmentClass() {
@@ -865,14 +1138,54 @@
         return label;
     }
 
+    function matchLabels(match) {
+        if (Array.isArray(match?.labels) && match.labels.length) {
+            return match.labels;
+        }
+        if (Array.isArray(match?.entries) && match.entries.length) {
+            return [{ entries: match.entries, anchor: null }];
+        }
+        return [];
+    }
+
+    function matchEntries(match) {
+        return matchLabels(match).flatMap((label) => label.entries || []);
+    }
+
+    function hintAnchorOffset(labelMatch, wordRect) {
+        const anchor = labelMatch?.anchor;
+        if (!anchor || anchor.type !== "substring") {
+            return {
+                left: 0,
+                width: wordRect.width,
+                center: wordRect.width / 2
+            };
+        }
+
+        const safeWordLength = Math.max(1, Number(anchor.wordLength) || 1);
+        const safeStart = Math.max(0, Math.min(safeWordLength, Number(anchor.start) || 0));
+        const safeEnd = Math.max(safeStart, Math.min(safeWordLength, Number(anchor.end) || safeStart));
+        const left = (safeStart / safeWordLength) * wordRect.width;
+        const right = (safeEnd / safeWordLength) * wordRect.width;
+        return {
+            left,
+            width: Math.max(0, right - left),
+            center: left + Math.max(0, right - left) / 2
+        };
+    }
+
     function summarizeMatch(words, startIndex, match) {
+        const entries = matchEntries(match);
+        const labels = matchLabels(match);
         return {
             matched: true,
             word: match.word,
             normalized: match.normalized,
-            hint: hintTextForLogs(match.entries),
-            matchCount: match.entries.length,
+            hint: hintTextForLogs(entries),
+            matchCount: entries.length,
+            labelCount: labels.length,
             wordCount: match.wordCount,
+            substringMatch: Boolean(match.isSubstringMatch),
             active: words
                 .slice(startIndex, startIndex + match.wordCount)
                 .some((word) => wordRecordHasClass(word, "active"))
@@ -890,10 +1203,23 @@
             wordEl.style.position = "relative";
         }
 
-        const label = createHintLabel(match.entries);
+        const rect = wordRecordRect(words[startIndex]);
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+            return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
+        }
+
         wordEl.classList.add("cch-host");
         wordEl.dataset.cchAnnotated = "true";
-        wordEl.prepend(label);
+
+        matchLabels(match).forEach((labelMatch) => {
+            const label = createHintLabel(labelMatch.entries);
+            const anchor = hintAnchorOffset(labelMatch, rect);
+            label.style.left = STATE.settings.hint_position === "center"
+                ? `${anchor.center}px`
+                : `${anchor.left}px`;
+            label.style.top = "0";
+            wordEl.prepend(label);
+        });
 
         if (!includeDebugSummary) {
             return null;
@@ -911,17 +1237,20 @@
             return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
         }
 
-        const label = createHintLabel(match.entries);
         const adapter = currentSiteAdapter();
-        if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
-            label.classList.add("cch-keybr-overlay-extra-spacing");
-        }
         const overlayPosition = overlayPositionFromViewportRect(root, rect);
-        label.style.left = STATE.settings.hint_position === "center"
-            ? `${overlayPosition.left + overlayPosition.width / 2}px`
-            : `${overlayPosition.left}px`;
-        label.style.top = `${overlayPosition.top}px`;
-        root.appendChild(label);
+        matchLabels(match).forEach((labelMatch) => {
+            const label = createHintLabel(labelMatch.entries);
+            if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
+                label.classList.add("cch-keybr-overlay-extra-spacing");
+            }
+            const anchor = hintAnchorOffset(labelMatch, rect);
+            label.style.left = STATE.settings.hint_position === "center"
+                ? `${overlayPosition.left + anchor.center}px`
+                : `${overlayPosition.left + anchor.left}px`;
+            label.style.top = `${overlayPosition.top}px`;
+            root.appendChild(label);
+        });
 
         if (!includeDebugSummary) {
             return null;

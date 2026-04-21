@@ -42,6 +42,8 @@
         enabled: document.getElementById("enabled"),
         includeArpeggiates: document.getElementById("includeArpeggiates"),
         includeModifierStyle: document.getElementById("includeModifierStyle"),
+        enableSubstringHints: document.getElementById("enableSubstringHints"),
+        minimumWordLength: document.getElementById("minimumWordLength"),
         showDebugOutline: document.getElementById("showDebugOutline"),
         debugLogging: document.getElementById("debugLogging"),
         showExtendedSpecialDescriptions: document.getElementById("showExtendedSpecialDescriptions"),
@@ -287,6 +289,10 @@
         };
 
         settings.hotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
+        settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
+        settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
+            ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
+            : Math.max(1, Math.floor(Number(settings.minimumWordLength)) || 3);
 
         if (!["system", "light", "dark"].includes(settings.themeMode)) {
             settings.themeMode = "system";
@@ -881,6 +887,10 @@
             enabled: els.enabled.checked,
             includeArpeggiates: els.includeArpeggiates.checked,
             includeModifierStyle: els.includeModifierStyle.checked,
+            enableSubstringHints: els.enableSubstringHints.checked,
+            minimumWordLength: CCHShared.normalizeMinimumWordLength
+                ? CCHShared.normalizeMinimumWordLength(els.minimumWordLength.value)
+                : Math.max(1, Math.floor(Number(els.minimumWordLength.value)) || defaults.minimumWordLength),
             showDebugOutline: els.showDebugOutline.checked,
             debugLogging: els.debugLogging.checked,
             showExtendedSpecialDescriptions: els.showExtendedSpecialDescriptions.checked,
@@ -961,6 +971,8 @@
         els.enabled.checked = settings.enabled;
         els.includeArpeggiates.checked = settings.includeArpeggiates;
         els.includeModifierStyle.checked = settings.includeModifierStyle;
+        els.enableSubstringHints.checked = settings.enableSubstringHints;
+        els.minimumWordLength.value = settings.minimumWordLength;
         els.showDebugOutline.checked = settings.showDebugOutline;
         els.debugLogging.checked = settings.debugLogging;
         els.showExtendedSpecialDescriptions.checked = settings.showExtendedSpecialDescriptions;

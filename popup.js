@@ -20,6 +20,8 @@
         popupHintTextFontSizeUnit: document.getElementById("popupHintTextFontSizeUnit"),
         popupHintPosition: document.getElementById("popupHintPosition"),
         popupHintDisplay: document.getElementById("popupHintDisplay"),
+        popupEnableSubstringHints: document.getElementById("popupEnableSubstringHints"),
+        popupMinimumWordLength: document.getElementById("popupMinimumWordLength"),
         popupLightPreviewHint: document.getElementById("popupLightPreviewHint"),
         popupDarkPreviewHint: document.getElementById("popupDarkPreviewHint"),
         popupLightPreviewWord: document.getElementById("popupLightPreviewWord"),
@@ -137,6 +139,10 @@
             ...(settings.specialTokenDescriptions || {})
         };
         settings.hotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
+        settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
+        settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
+            ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
+            : Math.max(1, Math.floor(Number(settings.minimumWordLength)) || 3);
         if (!["system", "light", "dark"].includes(settings.themeMode)) {
             settings.themeMode = "system";
         }
@@ -213,6 +219,8 @@
         els.popupHintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
         els.popupHintPosition.value = settings.hint_position || "left";
         els.popupHintDisplay.value = settings.hint_display || "always";
+        els.popupEnableSubstringHints.checked = settings.enableSubstringHints;
+        els.popupMinimumWordLength.value = settings.minimumWordLength;
         syncHintTextSizeFieldBehavior();
         updateAppearancePreview();
         updateEnabledButton(settings.enabled);
@@ -241,6 +249,10 @@
                 : defaults.hint_text_font_size_em,
             hint_position: els.popupHintPosition.value === "center" ? "center" : "left",
             hint_display: els.popupHintDisplay.value === "hover" ? "hover" : "always",
+            enableSubstringHints: els.popupEnableSubstringHints.checked,
+            minimumWordLength: CCHShared.normalizeMinimumWordLength
+                ? CCHShared.normalizeMinimumWordLength(els.popupMinimumWordLength.value)
+                : Math.max(1, Math.floor(Number(els.popupMinimumWordLength.value)) || defaults.minimumWordLength),
             hotkeys: draftSettings.hotkeys,
             enabled: draftSettings.enabled
         });

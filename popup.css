@@ -276,6 +276,19 @@ button.secondary:hover {
     box-sizing: border-box;
 }
 
+.popupCheck {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.92rem;
+    font-weight: 600;
+}
+
+.popupCheck input {
+    width: auto;
+    margin: 0;
+}
+
 .inlineFieldPair {
     display: flex;
     gap: 8px;

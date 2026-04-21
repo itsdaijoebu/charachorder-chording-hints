@@ -103,6 +103,22 @@
         </div>
     </section>
 
+    <section class="popupCard">
+        <h2>Behavior</h2>
+        <div class="field_grid compactFields">
+            <label class="popupCheck" for="popupEnableSubstringHints">
+                <input id="popupEnableSubstringHints" type="checkbox">
+                <span>Enable substring / affix hints</span>
+            </label>
+            <label class="fieldLabel" for="popupMinimumWordLength">
+                <span class="labelWithTooltip tooltipable"
+                      data-tooltip="The minimum length a word needs to be to trigger chord hints">Minimum word length <span
+                        class="tooltipIcon" aria-hidden="true"></span></span>
+                <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
+            </label>
+        </div>
+    </section>
+
     <section class="popupSaveSettingsCard">
         <div class="popupActionsRow">
             <button id="popupSaveButton" type="button">Save settings</button>

@@ -888,6 +888,12 @@
     });
   }
 
+  function normalizeMinimumWordLength(value) {
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed)) return 3;
+    return Math.max(1, Math.min(64, parsed));
+  }
+
   function defaultSettings() {
     return {
       enabled: true,
@@ -895,7 +901,7 @@
       includeArpeggiates: false,
       includeModifierStyle: false,
       enableSubstringHints: false,
-      minimumWordLength: 3,
+      minimumWordLength: normalizeMinimumWordLength(3),
       showDebugOutline: false,
       debugLogging: false,
       showExtendedSpecialDescriptions: true,
@@ -926,6 +932,7 @@
     buildEntry,
     applyInputDisplayOverrides,
     defaultSettings,
+    normalizeMinimumWordLength,
     chooseEntries,
     normalizeTokenForLookup,
     meaningfulInputCodes,
