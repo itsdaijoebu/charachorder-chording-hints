@@ -251,6 +251,11 @@
         merged.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(merged.minimumWordLength)
             : Math.max(1, Math.floor(Number(merged.minimumWordLength)) || 3);
+        merged.hintCharacterOrderMode = CCHShared.normalizeHintCharacterOrderMode
+            ? CCHShared.normalizeHintCharacterOrderMode(merged.hintCharacterOrderMode)
+            : (merged.hintCharacterOrderMode === "charachorder-default"
+                ? "charachorder-default"
+                : "best-match");
         merged.hint_position = ["left", "center"].includes(merged.hint_position)
             ? merged.hint_position
             : "left";
@@ -723,7 +728,84 @@
         return el;
     }
 
-    function renderHintRows(entries) {
+    function isAlphanumericCharacter(char) {
+        return /[\p{L}\p{N}]/u.test(String(char || ""));
+    }
+
+    function isPunctuationCharacter(char) {
+        return /\p{P}/u.test(String(char || ""));
+    }
+
+    function reorderSegmentTokensForBestMatch(tokens, outputText) {
+        const tokenItems = (Array.isArray(tokens) ? tokens : []).map((token, index) => ({
+            token,
+            index,
+            searchChar: token?.type === "char" ? String(token.char || "").toLocaleLowerCase() : "",
+            isAlphanumeric: token?.type === "char" && isAlphanumericCharacter(token.char),
+            isPunctuation: token?.type === "char" && isPunctuationCharacter(token.char)
+        }));
+
+        const matched = [];
+        const usedIndexes = new Set();
+        for (const outputChar of Array.from(String(outputText || "").toLocaleLowerCase())) {
+            const match = tokenItems.find((item) => {
+                if (usedIndexes.has(item.index)) {
+                    return false;
+                }
+                if (!item.isAlphanumeric && !item.isPunctuation) {
+                    return false;
+                }
+                return item.searchChar === outputChar;
+            });
+
+            if (match) {
+                usedIndexes.add(match.index);
+                matched.push(match.token);
+            }
+        }
+
+        const leadingPunctuation = [];
+        const trailingAlphanumeric = [];
+        const trailingOtherCharacters = [];
+        const trailingSpecials = [];
+
+        tokenItems.forEach((item) => {
+            if (usedIndexes.has(item.index)) {
+                return;
+            }
+            if (item.isPunctuation) {
+                leadingPunctuation.push(item.token);
+                return;
+            }
+            if (item.isAlphanumeric) {
+                trailingAlphanumeric.push(item.token);
+                return;
+            }
+            if (item.token?.type === "char") {
+                trailingOtherCharacters.push(item.token);
+                return;
+            }
+            trailingSpecials.push(item.token);
+        });
+
+        return [
+            ...leadingPunctuation,
+            ...matched,
+            ...trailingAlphanumeric,
+            ...trailingOtherCharacters,
+            ...trailingSpecials
+        ];
+    }
+
+    function displayTokensForSegment(segment, outputText) {
+        const tokens = Array.isArray(segment?.inputTokens) ? segment.inputTokens : [];
+        if (STATE.settings.hintCharacterOrderMode !== "best-match") {
+            return tokens;
+        }
+        return reorderSegmentTokensForBestMatch(tokens, outputText);
+    }
+
+    function renderHintRows(entries, outputText) {
         const fragment = document.createDocumentFragment();
 
         for (const entry of entries) {
@@ -736,7 +818,7 @@
                     row.appendChild(renderSegmentSeparator());
                 }
 
-                for (const token of segment.inputTokens) {
+                for (const token of displayTokensForSegment(segment, outputText)) {
                     row.appendChild(renderToken(token));
                 }
             });
@@ -1121,7 +1203,7 @@
         }
     }
 
-    function createHintLabel(entries) {
+    function createHintLabel(entries, outputText) {
         const label = document.createElement("span");
         label.className = "cch-hint-label";
         label.classList.add(hintAlignmentClass());
@@ -1129,7 +1211,7 @@
         if (entries.length > 1) {
             label.classList.add("cch-multiple");
         }
-        label.appendChild(renderHintRows(entries));
+        label.appendChild(renderHintRows(entries, outputText));
         label.addEventListener("click", (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -1386,7 +1468,7 @@
         wordEl.dataset.cchAnnotated = "true";
 
         matchLabels(match).forEach((labelMatch) => {
-            const label = createHintLabel(labelMatch.entries);
+            const label = createHintLabel(labelMatch.entries, match.word);
             const anchor = hintAnchorOffset(words[startIndex], match, labelMatch, rect);
             label.style.left = STATE.settings.hint_position === "center"
                 ? `${anchor.center}px`
@@ -1414,7 +1496,7 @@
         const adapter = currentSiteAdapter();
         const overlayPosition = overlayPositionFromViewportRect(root, rect);
         matchLabels(match).forEach((labelMatch) => {
-            const label = createHintLabel(labelMatch.entries);
+            const label = createHintLabel(labelMatch.entries, match.word);
             if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
                 label.classList.add("cch-keybr-overlay-extra-spacing");
             }

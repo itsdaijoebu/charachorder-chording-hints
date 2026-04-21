@@ -22,6 +22,7 @@
         popupHintDisplay: document.getElementById("popupHintDisplay"),
         popupEnableSubstringHints: document.getElementById("popupEnableSubstringHints"),
         popupMinimumWordLength: document.getElementById("popupMinimumWordLength"),
+        popupHintCharacterOrderMode: document.getElementById("popupHintCharacterOrderMode"),
         popupLightPreviewHint: document.getElementById("popupLightPreviewHint"),
         popupDarkPreviewHint: document.getElementById("popupDarkPreviewHint"),
         popupLightPreviewWord: document.getElementById("popupLightPreviewWord"),
@@ -143,6 +144,11 @@
         settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
             : Math.max(1, Math.floor(Number(settings.minimumWordLength)) || 3);
+        settings.hintCharacterOrderMode = CCHShared.normalizeHintCharacterOrderMode
+            ? CCHShared.normalizeHintCharacterOrderMode(settings.hintCharacterOrderMode)
+            : (settings.hintCharacterOrderMode === "charachorder-default"
+                ? "charachorder-default"
+                : "best-match");
         if (!["system", "light", "dark"].includes(settings.themeMode)) {
             settings.themeMode = "system";
         }
@@ -221,6 +227,7 @@
         els.popupHintDisplay.value = settings.hint_display || "always";
         els.popupEnableSubstringHints.checked = settings.enableSubstringHints;
         els.popupMinimumWordLength.value = settings.minimumWordLength;
+        els.popupHintCharacterOrderMode.value = settings.hintCharacterOrderMode;
         syncHintTextSizeFieldBehavior();
         updateAppearancePreview();
         updateEnabledButton(settings.enabled);
@@ -253,6 +260,11 @@
             minimumWordLength: CCHShared.normalizeMinimumWordLength
                 ? CCHShared.normalizeMinimumWordLength(els.popupMinimumWordLength.value)
                 : Math.max(1, Math.floor(Number(els.popupMinimumWordLength.value)) || defaults.minimumWordLength),
+            hintCharacterOrderMode: CCHShared.normalizeHintCharacterOrderMode
+                ? CCHShared.normalizeHintCharacterOrderMode(els.popupHintCharacterOrderMode.value)
+                : (els.popupHintCharacterOrderMode.value === "charachorder-default"
+                    ? "charachorder-default"
+                    : "best-match"),
             hotkeys: draftSettings.hotkeys,
             enabled: draftSettings.enabled
         });

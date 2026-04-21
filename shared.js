@@ -894,6 +894,10 @@
     return Math.max(1, Math.min(64, parsed));
   }
 
+  function normalizeHintCharacterOrderMode(value) {
+    return value === "charachorder-default" ? "charachorder-default" : "best-match";
+  }
+
   function defaultSettings() {
     return {
       enabled: true,
@@ -902,6 +906,7 @@
       includeModifierStyle: false,
       enableSubstringHints: false,
       minimumWordLength: normalizeMinimumWordLength(3),
+      hintCharacterOrderMode: normalizeHintCharacterOrderMode("best-match"),
       showDebugOutline: false,
       debugLogging: false,
       showExtendedSpecialDescriptions: true,
@@ -933,6 +938,7 @@
     applyInputDisplayOverrides,
     defaultSettings,
     normalizeMinimumWordLength,
+    normalizeHintCharacterOrderMode,
     chooseEntries,
     normalizeTokenForLookup,
     meaningfulInputCodes,

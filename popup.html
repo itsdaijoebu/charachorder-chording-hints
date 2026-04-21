@@ -118,6 +118,15 @@
                         class="tooltipIcon" aria-hidden="true"></span></span>
                 <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
             </label>
+            <label class="fieldLabel" for="popupHintCharacterOrderMode">
+                <span class="labelWithTooltip tooltipable"
+                      data-tooltip="Charachorder default shows chord characters in the official Charachorder GUI order. Best match reorders them to follow the output word as closely as possible.">Hint character order <span
+                        class="tooltipIcon" aria-hidden="true"></span></span>
+                <select id="popupHintCharacterOrderMode">
+                    <option value="best-match">Best match</option>
+                    <option value="charachorder-default">Charachorder default</option>
+                </select>
+            </label>
         </div>
     </section>
 
