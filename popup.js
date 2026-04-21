@@ -62,6 +62,16 @@
         return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
     }
 
+    function previewHintTextForWord(word, mode) {
+        const safeWord = String(word || "").toLocaleLowerCase();
+        if (mode === "best-match") {
+            return safeWord;
+        }
+        return Array.from(safeWord)
+            .sort((left, right) => left.localeCompare(right))
+            .join("");
+    }
+
     function syncHintTextSizeFieldBehavior() {
         const unit = els.popupHintTextFontSizeUnit.value === "px" ? "px" : "em";
         const max = unit === "px" ? 64 : 4;
@@ -87,6 +97,12 @@
         const fontSize = `${settings.hint_text_font_size_value}${settings.hint_text_font_size_unit}`;
         const alignClass = settings.hint_position === "center" ? "popupPreviewAlignCenter" : "popupPreviewAlignLeft";
         const revealOnHover = settings.hint_display === "hover";
+        const hintOrderMode = settings.hintCharacterOrderMode === "charachorder-default"
+            ? "charachorder-default"
+            : "best-match";
+
+        els.popupDarkPreviewHint.textContent = previewHintTextForWord("dark", hintOrderMode);
+        els.popupLightPreviewHint.textContent = previewHintTextForWord("light", hintOrderMode);
 
         els.popupLightPreviewHint.style.background = hexToRgba(
             settings.hint_box_light_mode_color,
@@ -398,7 +414,8 @@
         els.popupHintBoxLightModeOpacity,
         els.popupHintTextFontSizeValue,
         els.popupHintPosition,
-        els.popupHintDisplay
+        els.popupHintDisplay,
+        els.popupHintCharacterOrderMode
     ].forEach((input) => {
         input.addEventListener("input", updateAppearancePreview);
         input.addEventListener("change", updateAppearancePreview);

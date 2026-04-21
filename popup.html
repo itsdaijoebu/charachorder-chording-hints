@@ -86,16 +86,16 @@
                 <div class="popupPreviewPanel popupPreviewPanelDark">
                     <div class="popupPreviewCanvas">
                         <div id="popupDarkPreviewWord" class="popupPreviewWord">
-                            <div id="popupDarkPreviewHint" class="popupPreviewHint">chrd</div>
-                            <span class="popupPreviewLabel">Dark</span>
+                            <div id="popupDarkPreviewHint" class="popupPreviewHint">dark</div>
+                            <span id="popupDarkPreviewText" class="popupPreviewWordText">dark</span>
                         </div>
                     </div>
                 </div>
                 <div class="popupPreviewPanel popupPreviewPanelLight">
                     <div class="popupPreviewCanvas">
                         <div id="popupLightPreviewWord" class="popupPreviewWord">
-                            <div id="popupLightPreviewHint" class="popupPreviewHint">chrd</div>
-                            <span class="popupPreviewLabel">Light</span>
+                            <div id="popupLightPreviewHint" class="popupPreviewHint">light</div>
+                            <span id="popupLightPreviewText" class="popupPreviewWordText">light</span>
                         </div>
                     </div>
                 </div>
@@ -109,24 +109,26 @@
             <label class="popupCheck tooltipable" for="popupEnableSubstringHints"
                    data-tooltip="May affect performance, especially with larger dictionaries.">
                 <input id="popupEnableSubstringHints" type="checkbox">
-                <span>Enable substring / affix hints</span>
+                <span>Enable Substring Hints</span>
                 <span class="tooltipIcon" aria-hidden="true"></span>
             </label>
-            <label class="fieldLabel" for="popupMinimumWordLength">
-                <span class="labelWithTooltip tooltipable"
-                      data-tooltip="The minimum length a word needs to be to trigger chord hints">Minimum word length <span
-                        class="tooltipIcon" aria-hidden="true"></span></span>
-                <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
-            </label>
-            <label class="fieldLabel" for="popupHintCharacterOrderMode">
-                <span class="labelWithTooltip tooltipable"
-                      data-tooltip="Charachorder default shows chord characters in the official Charachorder GUI order. Best match reorders them to follow the output word as closely as possible.">Hint character order <span
-                        class="tooltipIcon" aria-hidden="true"></span></span>
-                <select id="popupHintCharacterOrderMode">
-                    <option value="best-match">Best match</option>
-                    <option value="charachorder-default">Charachorder default</option>
-                </select>
-            </label>
+            <div class="popupBehaviorPair">
+                <label class="fieldLabel" for="popupMinimumWordLength">
+                    <span class="labelWithTooltip tooltipable"
+                          data-tooltip="The minimum length a word needs to be to trigger chord hints">Min word length <span
+                            class="tooltipIcon" aria-hidden="true"></span></span>
+                    <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
+                </label>
+                <label class="fieldLabel" for="popupHintCharacterOrderMode">
+                    <span class="labelWithTooltip tooltipable"
+                          data-tooltip="Charachorder default shows chord characters in the official Charachorder GUI order. Best match reorders them to follow the output word as closely as possible.">Hint display <span
+                            class="tooltipIcon" aria-hidden="true"></span></span>
+                    <select id="popupHintCharacterOrderMode">
+                        <option value="best-match">Best match</option>
+                        <option value="charachorder-default">Charachorder default</option>
+                    </select>
+                </label>
+            </div>
         </div>
     </section>
 

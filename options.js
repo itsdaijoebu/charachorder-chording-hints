@@ -451,6 +451,83 @@
         return separator;
     }
 
+    function isAlphanumericCharacter(char) {
+        return /[\p{L}\p{N}]/u.test(String(char || ""));
+    }
+
+    function isPunctuationCharacter(char) {
+        return /\p{P}/u.test(String(char || ""));
+    }
+
+    function reorderSegmentTokensForBestMatch(tokens, outputText) {
+        const tokenItems = (Array.isArray(tokens) ? tokens : []).map((token, index) => ({
+            token,
+            index,
+            searchChar: token?.type === "char" ? String(token.char || "").toLocaleLowerCase() : "",
+            isAlphanumeric: token?.type === "char" && isAlphanumericCharacter(token.char),
+            isPunctuation: token?.type === "char" && isPunctuationCharacter(token.char)
+        }));
+
+        const matched = [];
+        const usedIndexes = new Set();
+        for (const outputChar of Array.from(String(outputText || "").toLocaleLowerCase())) {
+            const match = tokenItems.find((item) => {
+                if (usedIndexes.has(item.index)) {
+                    return false;
+                }
+                if (!item.isAlphanumeric && !item.isPunctuation) {
+                    return false;
+                }
+                return item.searchChar === outputChar;
+            });
+
+            if (match) {
+                usedIndexes.add(match.index);
+                matched.push(match.token);
+            }
+        }
+
+        const leadingPunctuation = [];
+        const trailingAlphanumeric = [];
+        const trailingOtherCharacters = [];
+        const trailingSpecials = [];
+
+        tokenItems.forEach((item) => {
+            if (usedIndexes.has(item.index)) {
+                return;
+            }
+            if (item.isPunctuation) {
+                leadingPunctuation.push(item.token);
+                return;
+            }
+            if (item.isAlphanumeric) {
+                trailingAlphanumeric.push(item.token);
+                return;
+            }
+            if (item.token?.type === "char") {
+                trailingOtherCharacters.push(item.token);
+                return;
+            }
+            trailingSpecials.push(item.token);
+        });
+
+        return [
+            ...leadingPunctuation,
+            ...matched,
+            ...trailingAlphanumeric,
+            ...trailingOtherCharacters,
+            ...trailingSpecials
+        ];
+    }
+
+    function displayTokensForSegment(segment, entry, settings) {
+        const tokens = Array.isArray(segment?.inputTokens) ? segment.inputTokens : [];
+        if (settings.hintCharacterOrderMode !== "best-match") {
+            return tokens;
+        }
+        return reorderSegmentTokensForBestMatch(tokens, entry?.outputText || "");
+    }
+
     function renderInputPreview(entry, settings) {
         const wrapper = document.createElement("div");
         wrapper.className = "hintPreview";
@@ -464,7 +541,7 @@
                 row.appendChild(renderSegmentSeparator(settings));
             }
 
-            for (const token of segment.inputTokens) {
+            for (const token of displayTokensForSegment(segment, entry, settings)) {
                 row.appendChild(renderToken(token, settings));
             }
         });
@@ -1087,6 +1164,12 @@
             : "em";
         const alignClass = settings.hint_position === "center" ? "previewAlignCenter" : "previewAlignLeft";
         const revealOnHover = settings.hint_display === "hover";
+        const hintOrderMode = settings.hintCharacterOrderMode === "charachorder-default"
+            ? "charachorder-default"
+            : "best-match";
+
+        els.hintPreviewDark.textContent = previewHintTextForWord("dark", hintOrderMode);
+        els.hintPreviewLight.textContent = previewHintTextForWord("light", hintOrderMode);
 
         els.hintPreviewDark.style.background = hexToRgba(settings.hint_box_dark_mode_color, settings.hint_box_dark_mode_opacity);
         els.hintPreviewDark.style.color = settings.hint_text_dark_mode_color;
@@ -2283,7 +2366,8 @@
         els.hintTextLightModeColor,
         els.hintTextFontSizeValue,
         els.hintPosition,
-        els.hintDisplay
+        els.hintDisplay,
+        els.hintCharacterOrderMode
     ].forEach((el) => {
         el.addEventListener("input", () => updateAppearancePreview(currentSettingsFromForm()));
         el.addEventListener("change", () => updateAppearancePreview(currentSettingsFromForm()));
@@ -2292,6 +2376,11 @@
     els.hintTextFontSizeUnit.addEventListener("change", () => {
         syncHintTextSizeFieldBehavior();
         updateAppearancePreview(currentSettingsFromForm());
+    });
+
+    [els.hintCharacterOrderMode].forEach((el) => {
+        el.addEventListener("input", () => renderLoadedChords(currentSettingsFromForm()));
+        el.addEventListener("change", () => renderLoadedChords(currentSettingsFromForm()));
     });
 
     [els.hintPreviewDark, els.hintPreviewLight].forEach((el) => {
