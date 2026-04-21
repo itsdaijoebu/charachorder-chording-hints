@@ -1152,7 +1152,167 @@
         return matchLabels(match).flatMap((label) => label.entries || []);
     }
 
-    function hintAnchorOffset(labelMatch, wordRect) {
+    function mapNormalizedOffsetsToRawOffsets(rawText, normalizedText, start, end) {
+        const safeRawText = String(rawText || "");
+        const safeNormalizedText = String(normalizedText || "");
+        if (!safeRawText || !safeNormalizedText) {
+            return null;
+        }
+
+        const normalizedToRaw = [];
+        let rawIndex = 0;
+
+        for (let normalizedIndex = 0; normalizedIndex < safeNormalizedText.length; normalizedIndex += 1) {
+            const target = safeNormalizedText[normalizedIndex];
+            let found = false;
+
+            while (rawIndex < safeRawText.length) {
+                if (safeRawText[rawIndex].toLocaleLowerCase() === target) {
+                    normalizedToRaw[normalizedIndex] = rawIndex;
+                    rawIndex += 1;
+                    found = true;
+                    break;
+                }
+                rawIndex += 1;
+            }
+
+            if (!found) {
+                return null;
+            }
+        }
+
+        if (start < 0 || end > safeNormalizedText.length || start >= end) {
+            return null;
+        }
+
+        return {
+            start: normalizedToRaw[start],
+            end: normalizedToRaw[end - 1] + 1
+        };
+    }
+
+    function collectRenderableTextSegments(root) {
+        if (!(root instanceof HTMLElement)) {
+            return [];
+        }
+
+        const segments = [];
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                if (!(node instanceof Text) || !node.nodeValue) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return node.parentElement?.closest(".cch-hint-label")
+                    ? NodeFilter.FILTER_REJECT
+                    : NodeFilter.FILTER_ACCEPT;
+            }
+        });
+
+        let searchableOffset = 0;
+        let currentNode = walker.nextNode();
+        while (currentNode) {
+            const value = currentNode.nodeValue || "";
+            const boundaries = [0];
+            let searchableLength = 0;
+
+            for (let index = 0; index < value.length; index += 1) {
+                if (value[index] === "") {
+                    continue;
+                }
+                searchableLength += 1;
+                boundaries[searchableLength] = index + 1;
+            }
+
+            if (searchableLength > 0) {
+                segments.push({
+                    node: currentNode,
+                    start: searchableOffset,
+                    end: searchableOffset + searchableLength,
+                    boundaries
+                });
+                searchableOffset += searchableLength;
+            }
+
+            currentNode = walker.nextNode();
+        }
+
+        return segments;
+    }
+
+    function locateTextPosition(segments, offset) {
+        if (!segments.length) {
+            return null;
+        }
+
+        const safeOffset = Math.max(0, Number(offset) || 0);
+        for (const segment of segments) {
+            if (safeOffset <= segment.end) {
+                const localOffset = Math.max(
+                    0,
+                    Math.min(segment.boundaries.length - 1, safeOffset - segment.start)
+                );
+                return {
+                    node: segment.node,
+                    offset: segment.boundaries[localOffset] ?? segment.node.nodeValue.length
+                };
+            }
+        }
+
+        const lastSegment = segments[segments.length - 1];
+        return {
+            node: lastSegment.node,
+            offset: lastSegment.node.nodeValue.length
+        };
+    }
+
+    function measuredSubstringViewportRect(word, match, labelMatch) {
+        const anchor = labelMatch?.anchor;
+        if (!anchor || anchor.type !== "substring") {
+            return null;
+        }
+
+        const wordEl = wordRecordElement(word);
+        if (!(wordEl instanceof HTMLElement)) {
+            return null;
+        }
+
+        const rawOffsets = mapNormalizedOffsetsToRawOffsets(
+            wordRecordText(word),
+            match?.normalized,
+            Number(anchor.start) || 0,
+            Number(anchor.end) || 0
+        );
+        if (!rawOffsets) {
+            return null;
+        }
+
+        const segments = collectRenderableTextSegments(wordEl);
+        if (!segments.length) {
+            return null;
+        }
+
+        const rangeStart = locateTextPosition(segments, rawOffsets.start);
+        const rangeEnd = locateTextPosition(segments, rawOffsets.end);
+        if (!rangeStart || !rangeEnd) {
+            return null;
+        }
+
+        const range = document.createRange();
+        range.setStart(rangeStart.node, rangeStart.offset);
+        range.setEnd(rangeEnd.node, rangeEnd.offset);
+
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0 || rect.height > 0) {
+            return rect;
+        }
+
+        const firstClientRect = range.getClientRects()[0];
+        return firstClientRect && (firstClientRect.width > 0 || firstClientRect.height > 0)
+            ? firstClientRect
+            : null;
+    }
+
+    function proportionalHintAnchorOffset(labelMatch, wordRect) {
         const anchor = labelMatch?.anchor;
         if (!anchor || anchor.type !== "substring") {
             return {
@@ -1172,6 +1332,20 @@
             width: Math.max(0, right - left),
             center: left + Math.max(0, right - left) / 2
         };
+    }
+
+    function hintAnchorOffset(word, match, labelMatch, wordRect) {
+        const measuredRect = measuredSubstringViewportRect(word, match, labelMatch);
+        if (measuredRect && measuredRect.width > 0) {
+            const left = measuredRect.left - wordRect.left;
+            return {
+                left,
+                width: measuredRect.width,
+                center: left + measuredRect.width / 2
+            };
+        }
+
+        return proportionalHintAnchorOffset(labelMatch, wordRect);
     }
 
     function summarizeMatch(words, startIndex, match) {
@@ -1213,7 +1387,7 @@
 
         matchLabels(match).forEach((labelMatch) => {
             const label = createHintLabel(labelMatch.entries);
-            const anchor = hintAnchorOffset(labelMatch, rect);
+            const anchor = hintAnchorOffset(words[startIndex], match, labelMatch, rect);
             label.style.left = STATE.settings.hint_position === "center"
                 ? `${anchor.center}px`
                 : `${anchor.left}px`;
@@ -1244,7 +1418,7 @@
             if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
                 label.classList.add("cch-keybr-overlay-extra-spacing");
             }
-            const anchor = hintAnchorOffset(labelMatch, rect);
+            const anchor = hintAnchorOffset(words[startIndex], match, labelMatch, rect);
             label.style.left = STATE.settings.hint_position === "center"
                 ? `${overlayPosition.left + anchor.center}px`
                 : `${overlayPosition.left + anchor.left}px`;
