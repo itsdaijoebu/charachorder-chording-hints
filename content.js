@@ -25,6 +25,7 @@
         overlayResizeObserver: null,
         substringLookup: null,
         substringMatchCache: new Map(),
+        annotationMeasurementCache: null,
         lastLocationHref: location.href
     };
 
@@ -1728,6 +1729,55 @@
         };
     }
 
+    function measurementCacheKey(match, labelMatch) {
+        const anchor = labelMatch?.anchor;
+        return JSON.stringify({
+            normalized: String(match?.normalized || ""),
+            wordCount: Number(match?.wordCount) || 0,
+            anchorType: anchor?.type || "",
+            anchorStart: anchor?.type === "substring" ? Number(anchor.start) || 0 : null,
+            anchorEnd: anchor?.type === "substring" ? Number(anchor.end) || 0 : null
+        });
+    }
+
+    function cachedMeasurement(word, match, labelMatch) {
+        if (!(STATE.annotationMeasurementCache instanceof WeakMap) || !word || typeof word !== "object") {
+            return null;
+        }
+
+        let bucket = STATE.annotationMeasurementCache.get(word);
+        if (!bucket) {
+            bucket = new Map();
+            STATE.annotationMeasurementCache.set(word, bucket);
+        }
+
+        const key = measurementCacheKey(match, labelMatch);
+        if (!bucket.has(key)) {
+            bucket.set(key, undefined);
+        }
+
+        return {
+            bucket,
+            key,
+            value: bucket.get(key)
+        };
+    }
+
+    function normalizedViewportRect(rect) {
+        if (!rect || (!(rect.width > 0) && !(rect.height > 0))) {
+            return null;
+        }
+
+        return {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height
+        };
+    }
+
     function matchedOutputTextForLabel(match, labelMatch) {
         const rawText = String(match?.word || "");
         const normalizedText = String(match?.normalized || "");
@@ -1895,6 +1945,39 @@
         return range;
     }
 
+    function measuredSubstringGeometry(word, match, labelMatch) {
+        const cached = cachedMeasurement(word, match, labelMatch);
+        if (cached && cached.value) {
+            return cached.value;
+        }
+
+        const range = measuredSubstringRange(word, match, labelMatch);
+        if (!range) {
+            if (cached) {
+                cached.bucket.set(cached.key, null);
+            }
+            return null;
+        }
+
+        const rawClientRects = Array.from(range.getClientRects())
+            .map(normalizedViewportRect)
+            .filter(Boolean);
+        const rects = rawClientRects.length
+            ? mergeAdjacentClientRects(rawClientRects)
+            : [];
+        const boundingRect = normalizedViewportRect(range.getBoundingClientRect());
+        const geometry = {
+            rects,
+            rect: boundingRect || rects[0] || null
+        };
+
+        if (cached) {
+            cached.bucket.set(cached.key, geometry);
+        }
+
+        return geometry;
+    }
+
     function mapOriginalOffsetsToLiveOffsets(originalText, liveText, start, end) {
         const safeOriginalText = String(originalText || "");
         const safeLiveText = String(liveText || "");
@@ -1935,18 +2018,7 @@
     }
 
     function measuredSubstringViewportRects(word, match, labelMatch) {
-        const range = measuredSubstringRange(word, match, labelMatch);
-        if (!range) {
-            return [];
-        }
-
-        const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
-        if (rects.length) {
-            return mergeAdjacentClientRects(rects);
-        }
-
-        const rect = range.getBoundingClientRect();
-        return rect.width > 0 || rect.height > 0 ? [rect] : [];
+        return measuredSubstringGeometry(word, match, labelMatch)?.rects || [];
     }
 
     function mergeAdjacentClientRects(rects) {
@@ -2021,20 +2093,7 @@
     }
 
     function measuredSubstringViewportRect(word, match, labelMatch) {
-        const range = measuredSubstringRange(word, match, labelMatch);
-        if (!range) {
-            return null;
-        }
-
-        const rect = range.getBoundingClientRect();
-        if (rect.width > 0 || rect.height > 0) {
-            return rect;
-        }
-
-        const firstClientRect = range.getClientRects()[0];
-        return firstClientRect && (firstClientRect.width > 0 || firstClientRect.height > 0)
-            ? firstClientRect
-            : null;
+        return measuredSubstringGeometry(word, match, labelMatch)?.rect || null;
     }
 
     function proportionalHintAnchorOffset(labelMatch, wordRect) {
@@ -2348,6 +2407,7 @@
     function runAnnotationPass(force = false) {
         STATE.scheduled = false;
         STATE.scheduledForce = false;
+        STATE.annotationMeasurementCache = new WeakMap();
 
         if (!STATE.settings.enabled || !STATE.dictionary) {
             STATE.trackedParagraphs.forEach((paragraph) => clearAnnotationsWithin(paragraph, true));
@@ -2357,6 +2417,7 @@
                 enabled: STATE.settings.enabled,
                 hasDictionary: Boolean(STATE.dictionary),
             });
+            STATE.annotationMeasurementCache = null;
             return;
         }
 
@@ -2370,6 +2431,7 @@
                 hostname: location.hostname,
                 pathname: location.pathname
             });
+            STATE.annotationMeasurementCache = null;
             return;
         }
 
@@ -2412,6 +2474,7 @@
             STATE.trackedParagraphs = [];
             clearOverlayAnnotations();
             log("No prompt containers/paragraphs found for current adapter", { site: adapter.key });
+            STATE.annotationMeasurementCache = null;
             return;
         }
 
@@ -2435,6 +2498,7 @@
             entryCount: STATE.dictionary.entryCount,
             forced: force
         });
+        STATE.annotationMeasurementCache = null;
     }
 
     function scheduleAnnotation(force = false) {
