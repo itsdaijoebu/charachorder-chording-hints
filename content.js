@@ -23,7 +23,8 @@
         overlayRepositionFrame: null,
         overlayResizeObserver: null,
         substringLookup: null,
-        substringMatchCache: new Map()
+        substringMatchCache: new Map(),
+        lastLocationHref: location.href
     };
 
     const SITE_ADAPTERS = [
@@ -238,6 +239,10 @@
             },
             mutationRefreshMode(mutation) {
                 if (mutation.type === "childList") {
+                    if (mutation.target === STATE.observedPromptContainer) {
+                        return "annotate";
+                    }
+
                     const changedNodes = [
                         ...Array.from(mutation.addedNodes || []),
                         ...Array.from(mutation.removedNodes || [])
@@ -261,6 +266,133 @@
     function log(...args) {
         if (!STATE.settings.debugLogging) return;
         console.log("[CCH]", ...args);
+    }
+
+    function logKeybrCompact(label, payload) {
+        if (!STATE.settings.debugLogging) return;
+
+        try {
+            log(`[cch-keybr] ${label} ${JSON.stringify(payload)}`);
+        } catch (error) {
+            log(`[cch-keybr] ${label} <unserializable>`);
+        }
+    }
+
+    function visibleDebugText(text) {
+        return String(text || "")
+            .replace(/\uE000/g, "<E000>")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function keybrDebugNodeSummary(node) {
+        if (!(node instanceof Element)) {
+            return {
+                nodeType: node?.nodeType ?? null,
+                text: visibleDebugText(node?.textContent || "")
+            };
+        }
+
+        return {
+            tag: node.tagName,
+            className: node.className || "",
+            text: visibleDebugText(annotationFreeTextContent(node)),
+            childTexts: Array.from(node.childNodes || []).map((child) => ({
+                nodeType: child.nodeType,
+                tag: child instanceof Element ? child.tagName : null,
+                className: child instanceof Element ? (child.className || "") : "",
+                text: visibleDebugText(child.textContent || "")
+            }))
+        };
+    }
+
+    function logKeybrPromptState(reason, container, words) {
+        if (!STATE.settings.debugLogging) return;
+
+        const adapter = currentSiteAdapter();
+        if (adapter?.key !== "keybr" || !(container instanceof HTMLElement)) {
+            return;
+        }
+
+        const wrappers = Array.from(container.querySelectorAll(":scope > span"))
+            .filter((el) => el instanceof HTMLElement)
+            .slice(0, 12)
+            .map((wrapper, index) => ({
+                wrapperIndex: index,
+                rectLeft: Math.round(wrapper.getBoundingClientRect().left),
+                rectWidth: Math.round(wrapper.getBoundingClientRect().width),
+                text: visibleDebugText(annotationFreeTextContent(wrapper)),
+                childTexts: Array.from(wrapper.querySelectorAll(":scope > span"))
+                    .filter((child) => child instanceof HTMLElement)
+                    .map((child, childIndex) => ({
+                        childIndex,
+                        rectLeft: Math.round(child.getBoundingClientRect().left),
+                        rectWidth: Math.round(child.getBoundingClientRect().width),
+                        text: visibleDebugText(annotationFreeTextContent(child))
+                    }))
+            }));
+
+        const wordSummaries = (Array.isArray(words) ? words : [])
+            .slice(0, 12)
+            .map((word, index) => {
+                const el = wordRecordElement(word);
+                const rect = wordRecordRect(word, false);
+                return {
+                    wordIndex: index,
+                    text: visibleDebugText(wordRecordText(word)),
+                    className: el instanceof HTMLElement ? (el.className || "") : "",
+                    rectLeft: rect ? Math.round(rect.left) : null,
+                    rectWidth: rect ? Math.round(rect.width) : null
+                };
+            });
+
+        logKeybrCompact(`prompt-state ${reason}`, {
+            wrapperCount: container.querySelectorAll(":scope > span").length,
+            wordCount: Array.isArray(words) ? words.length : 0,
+            wrappers,
+            words: wordSummaries
+        });
+    }
+
+    function logKeybrMutationState(mutation, refreshMode) {
+        if (!STATE.settings.debugLogging) return;
+
+        const adapter = currentSiteAdapter();
+        if (adapter?.key !== "keybr") {
+            return;
+        }
+
+        logKeybrCompact("mutation", {
+            refreshMode,
+            type: mutation.type,
+            target: keybrDebugNodeSummary(mutation.target),
+            addedNodes: Array.from(mutation.addedNodes || []).slice(0, 6).map(keybrDebugNodeSummary),
+            removedNodes: Array.from(mutation.removedNodes || []).slice(0, 6).map(keybrDebugNodeSummary)
+        });
+    }
+
+    function logKeybrOverlayState(reason) {
+        if (!STATE.settings.debugLogging) return;
+
+        const adapter = currentSiteAdapter();
+        if (adapter?.key !== "keybr") {
+            return;
+        }
+
+        logKeybrCompact(`overlay-state ${reason}`, {
+            labelCount: STATE.overlayLabels.length,
+            labels: STATE.overlayLabels.slice(0, 12).map((record, index) => {
+                const rect = wordRecordRect(record.word, false);
+                return {
+                    labelIndex: index,
+                    wordText: visibleDebugText(wordRecordText(record.word)),
+                    wordLeft: rect ? Math.round(rect.left) : null,
+                    wordWidth: rect ? Math.round(rect.width) : null,
+                    labelLeft: record.label?.style.left || "",
+                    labelTop: record.label?.style.top || ""
+                };
+            })
+        });
     }
 
     function getStorage(keys) {
@@ -409,7 +541,7 @@
     }
 
     function wordIndexListFromNodes(nodes) {
-        return Array.from(nodes || [])
+        const indexes = Array.from(nodes || [])
             .flatMap((node) => {
                 if (!(node instanceof Element)) return [];
 
@@ -429,7 +561,10 @@
                     .filter((index) => index != null)
                     .map(String);
             })
+            .filter((index, position, all) => all.indexOf(index) === position)
             .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+        return indexes;
     }
 
     function mutationTargetWord(mutation) {
@@ -443,10 +578,24 @@
     function monkeytypeMutationRefreshMode(mutation) {
         if (mutation.type !== "childList") return false;
 
+        const targetWord = mutationTargetWord(mutation);
+        const targetWordIndex = readMonkeytypeWordIndex(targetWord);
         const addedIndexes = wordIndexListFromNodes(mutation.addedNodes);
         const removedIndexes = wordIndexListFromNodes(mutation.removedNodes);
+        const changedIndexes = Array.from(new Set([...addedIndexes, ...removedIndexes]));
         const addedSignature = addedIndexes.join("|");
         const removedSignature = removedIndexes.join("|");
+
+        if (targetWord?.classList.contains("active")) {
+            if (!changedIndexes.length) return "reposition";
+
+            if (
+                targetWordIndex != null &&
+                changedIndexes.every((index) => index === String(targetWordIndex))
+            ) {
+                return "reposition";
+            }
+        }
 
         if (addedSignature || removedSignature) {
             if (addedSignature !== removedSignature) return "annotate";
@@ -454,8 +603,7 @@
             return "reposition";
         }
 
-        const word = mutationTargetWord(mutation);
-        if (word?.classList.contains("active")) return false;
+        if (targetWord?.classList.contains("active")) return false;
 
         return "reposition";
     }
@@ -482,6 +630,56 @@
             node.classList.contains("word") ||
             node.querySelector?.(".p-box, .word")
         ));
+    }
+
+    function handleLocationChange(reason) {
+        const nextHref = location.href;
+        if (nextHref === STATE.lastLocationHref) {
+            return;
+        }
+
+        const previousHref = STATE.lastLocationHref;
+        STATE.lastLocationHref = nextHref;
+
+        log("Location changed", {
+            reason,
+            previousHref,
+            nextHref
+        });
+
+        ensurePromptObserverTarget();
+        STATE.lastPromptSignature = "";
+        scheduleAnnotation(true);
+    }
+
+    function installLocationObserver() {
+        const notifyLocationChange = (reason) => {
+            window.setTimeout(() => handleLocationChange(reason), 0);
+        };
+
+        const wrapHistoryMethod = (methodName) => {
+            const original = history[methodName];
+            if (typeof original !== "function") {
+                return;
+            }
+
+            history[methodName] = function (...args) {
+                const result = original.apply(this, args);
+                notifyLocationChange(`history-${methodName}`);
+                return result;
+            };
+        };
+
+        wrapHistoryMethod("pushState");
+        wrapHistoryMethod("replaceState");
+
+        window.addEventListener("popstate", () => {
+            notifyLocationChange("popstate");
+        });
+
+        window.addEventListener("hashchange", () => {
+            notifyLocationChange("hashchange");
+        });
     }
 
     function hexToRgba(hex, opacity) {
@@ -584,8 +782,13 @@
         return Boolean(CCHShared.normalizeTokenForLookup(wordRecordText(word)));
     }
 
-    function wordRecordRect(word) {
-        if (word?.rect && typeof word.rect.width === "number" && typeof word.rect.height === "number") {
+    function wordRecordRect(word, useCachedRect = true) {
+        if (
+            useCachedRect &&
+            word?.rect &&
+            typeof word.rect.width === "number" &&
+            typeof word.rect.height === "number"
+        ) {
             return word.rect;
         }
 
@@ -734,7 +937,7 @@
             return false;
         }
 
-        const rect = wordRecordRect(record.word);
+        const rect = wordRecordRect(record.word, false);
         if (!rect || rect.width <= 0 || rect.height <= 0) {
             record.label.style.display = "none";
             return false;
@@ -770,6 +973,7 @@
         }
 
         STATE.overlayLabels = nextRecords;
+        logKeybrOverlayState("after-reposition");
     }
 
     function scheduleOverlayReposition() {
@@ -1788,6 +1992,12 @@
         const wordRecordLists = wordLists.map((words) => createWordRecords(words, renderMode === "overlay"));
         const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordRecordLists);
 
+        if (adapter.key === "keybr") {
+            paragraphs.forEach((paragraph, index) => {
+                logKeybrPromptState(`annotation-pass paragraph ${index}`, paragraph, wordRecordLists[index]);
+            });
+        }
+
         if (STATE.settings.debugLogging) {
             log("Paragraph discovery", {
                 site: adapter.key,
@@ -1816,6 +2026,10 @@
         const totalMatches = summaries.reduce((sum, item) => sum + item.matchedCount, 0);
 
         STATE.lastPromptSignature = nextPromptSignature;
+
+        if (adapter.key === "keybr") {
+            logKeybrOverlayState("after-annotation");
+        }
 
         log("Annotation pass complete", {
             site: adapter.key,
@@ -1935,6 +2149,9 @@
                 }
 
                 const refreshMode = adapter.mutationRefreshMode?.(mutation);
+                if (adapter.key === "keybr") {
+                    logKeybrMutationState(mutation, refreshMode || "none");
+                }
                 if (refreshMode === "annotate") {
                     sawGenerationCandidate = true;
                     shouldAnnotateDirectly = true;
@@ -2116,6 +2333,7 @@
             hostname: location.hostname,
             pathname: location.pathname
         });
+        installLocationObserver();
         installContainerObserver();
         installHotkeys();
         scheduleAnnotation(true);
