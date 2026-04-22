@@ -34,6 +34,8 @@
             key: "entertrained",
             renderMode: "inline",
             refreshOnContainerRebind: true,
+            premeasureInlineGeometry: true,
+            cacheInlineWordRects: true,
             matchesLocation() {
                 return (
                     location.hostname === "entertrained.app" &&
@@ -461,6 +463,14 @@
         return Number.isFinite(value) && value >= 0 ? value : fallback;
     }
 
+    function adapterFlag(propertyName, fallback = false) {
+        const adapter = currentSiteAdapter();
+        const rawValue = typeof adapter?.[propertyName] === "function"
+            ? adapter[propertyName]()
+            : adapter?.[propertyName];
+        return typeof rawValue === "boolean" ? rawValue : fallback;
+    }
+
     function adapterRenderMode(adapter = currentSiteAdapter()) {
         if (!adapter) return "inline";
         return typeof adapter.renderMode === "function"
@@ -820,6 +830,10 @@
     function wordRecordHasClass(word, className) {
         const el = wordRecordElement(word);
         return el instanceof HTMLElement && el.classList.contains(className);
+    }
+
+    function hasActiveAnnotationMeasurementCache() {
+        return STATE.annotationMeasurementCache instanceof WeakMap;
     }
 
     function createWordRecords(words, includeRects = false) {
@@ -2151,7 +2165,7 @@
     }
 
     function outlineViewportRectsForLabel(word, match, labelMatch) {
-        const wordRect = wordRecordRect(word, false);
+        const wordRect = wordRecordRect(word, hasActiveAnnotationMeasurementCache());
         if (!wordRect || wordRect.width <= 0 || wordRect.height <= 0) {
             return [];
         }
@@ -2220,7 +2234,7 @@
         outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
             const rect = outlineViewportRectForRecord(record);
             const wordEl = wordRecordElement(record.word);
-            const wordRect = wordRecordRect(record.word, false);
+            const wordRect = wordRecordRect(record.word, hasActiveAnnotationMeasurementCache());
             if (
                 !(wordEl instanceof HTMLElement) ||
                 !wordRect ||
@@ -2351,8 +2365,12 @@
 
         const words = Array.isArray(discoveredWords) ? discoveredWords : getWordElements(paragraph);
         const includeDebugSummary = STATE.settings.debugLogging;
+        const shouldPremeasureInlineGeometry =
+            renderMode === "inline" &&
+            adapterFlag("premeasureInlineGeometry");
         const matches = includeDebugSummary ? [] : null;
         const misses = includeDebugSummary ? [] : null;
+        const matchPlans = [];
         let matchedCount = 0;
         let unmatchedCount = 0;
 
@@ -2360,10 +2378,7 @@
             const result = findMatchFromWords(words, wordIndex);
             if (result.matched) {
                 matchedCount += 1;
-                const matchSummary = annotateMatch(words, wordIndex, result, renderMode, includeDebugSummary);
-                if (includeDebugSummary) {
-                    matches.push(matchSummary);
-                }
+                matchPlans.push({ wordIndex, result });
                 wordIndex += result.wordCount - 1;
             } else {
                 unmatchedCount += 1;
@@ -2372,6 +2387,29 @@
                 }
             }
         }
+
+        if (shouldPremeasureInlineGeometry) {
+            matchPlans.forEach((plan) => {
+                const word = words[plan.wordIndex];
+                wordRecordRect(word);
+                matchLabels(plan.result).forEach((labelMatch) => {
+                    measuredSubstringGeometry(word, plan.result, labelMatch);
+                });
+            });
+        }
+
+        matchPlans.forEach((plan) => {
+            const matchSummary = annotateMatch(
+                words,
+                plan.wordIndex,
+                plan.result,
+                renderMode,
+                includeDebugSummary
+            );
+            if (includeDebugSummary) {
+                matches.push(matchSummary);
+            }
+        });
 
         const summary = {
             site: currentSiteAdapter()?.key || "unknown",
@@ -2446,8 +2484,9 @@
             removeOverlayAnnotations();
         }
 
+        const shouldCacheWordRects = renderMode === "overlay" || adapterFlag("cacheInlineWordRects");
         const wordLists = paragraphs.map((paragraph) => getWordElements(paragraph));
-        const wordRecordLists = wordLists.map((words) => createWordRecords(words, renderMode === "overlay"));
+        const wordRecordLists = wordLists.map((words) => createWordRecords(words, shouldCacheWordRects));
         const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordRecordLists);
 
         if (adapter.key === "keybr") {
