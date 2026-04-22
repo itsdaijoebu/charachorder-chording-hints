@@ -50,13 +50,6 @@
         showExtendedSpecialDescriptions: document.getElementById("showExtendedSpecialDescriptions"),
         keybrHintLayout: document.getElementById("keybrHintLayout"),
 
-        // descDupAll: document.getElementById("desc_dup_all"),
-        // descDupLeft: document.getElementById("desc_dup_left"),
-        // descDupRight: document.getElementById("desc_dup_right"),
-        // descLeftShift: document.getElementById("desc_left_shift"),
-        // descRightShift: document.getElementById("desc_right_shift"),
-        // descArpeggiate: document.getElementById("desc_arpeggiate"),
-
         hintBoxDarkModeColor: document.getElementById("hintBoxDarkModeColor"),
         hintBoxDarkModeOpacity: document.getElementById("hintBoxDarkModeOpacity"),
         hintTextDarkModeColor: document.getElementById("hintTextDarkModeColor"),
@@ -87,7 +80,6 @@
 
         loadedChordsEmpty: document.getElementById("loadedChordsEmpty"),
         loadedChordsPanel: document.getElementById("loadedChordsPanel"),
-        // loadedSourceBadge: document.getElementById("loadedSourceBadge"),
         loadedChordsTableBody: document.getElementById("loadedChordsTableBody"),
         saveInputOverrideButton: document.getElementById("saveInputOverrideButton"),
         revertInputOverrideButton: document.getElementById("revertInputOverrideButton"),
@@ -461,81 +453,12 @@
         return separator;
     }
 
-    function isAlphanumericCharacter(char) {
-        return /[\p{L}\p{N}]/u.test(String(char || ""));
-    }
-
-    function isPunctuationCharacter(char) {
-        return /\p{P}/u.test(String(char || ""));
-    }
-
-    function reorderSegmentTokensForBestMatch(tokens, outputText) {
-        const tokenItems = (Array.isArray(tokens) ? tokens : []).map((token, index) => ({
-            token,
-            index,
-            searchChar: token?.type === "char" ? String(token.char || "").toLocaleLowerCase() : "",
-            isAlphanumeric: token?.type === "char" && isAlphanumericCharacter(token.char),
-            isPunctuation: token?.type === "char" && isPunctuationCharacter(token.char)
-        }));
-
-        const matched = [];
-        const usedIndexes = new Set();
-        for (const outputChar of Array.from(String(outputText || "").toLocaleLowerCase())) {
-            const match = tokenItems.find((item) => {
-                if (usedIndexes.has(item.index)) {
-                    return false;
-                }
-                if (!item.isAlphanumeric && !item.isPunctuation) {
-                    return false;
-                }
-                return item.searchChar === outputChar;
-            });
-
-            if (match) {
-                usedIndexes.add(match.index);
-                matched.push(match.token);
-            }
-        }
-
-        const leadingPunctuation = [];
-        const trailingAlphanumeric = [];
-        const trailingOtherCharacters = [];
-        const trailingSpecials = [];
-
-        tokenItems.forEach((item) => {
-            if (usedIndexes.has(item.index)) {
-                return;
-            }
-            if (item.isPunctuation) {
-                leadingPunctuation.push(item.token);
-                return;
-            }
-            if (item.isAlphanumeric) {
-                trailingAlphanumeric.push(item.token);
-                return;
-            }
-            if (item.token?.type === "char") {
-                trailingOtherCharacters.push(item.token);
-                return;
-            }
-            trailingSpecials.push(item.token);
-        });
-
-        return [
-            ...leadingPunctuation,
-            ...matched,
-            ...trailingAlphanumeric,
-            ...trailingOtherCharacters,
-            ...trailingSpecials
-        ];
-    }
-
     function displayTokensForSegment(segment, entry, settings) {
         const tokens = Array.isArray(segment?.inputTokens) ? segment.inputTokens : [];
         if (settings.hintCharacterOrderMode !== "best-match") {
             return tokens;
         }
-        return reorderSegmentTokensForBestMatch(tokens, entry?.outputText || "");
+        return CCHShared.reorderSegmentTokensForBestMatch(tokens, entry?.outputText || "");
     }
 
     function renderInputPreview(entry, settings) {
@@ -902,7 +825,6 @@
         if (!entries.length) {
             els.loadedChordsEmpty.hidden = false;
             els.loadedChordsPanel.hidden = true;
-            // els.loadedSourceBadge.textContent = "source: —";
             els.loadedChordsTableBody.innerHTML = "";
             els.pageStatus.textContent = "";
             els.pageJumpInput.value = "1";
@@ -911,7 +833,6 @@
 
         els.loadedChordsEmpty.hidden = true;
         els.loadedChordsPanel.hidden = false;
-        // els.loadedSourceBadge.textContent = `source: ${currentDictionary.source || "unknown"}`;
 
         const filteredEntries = filteredEntriesForPreview();
         const sortedEntries = sortedEntriesForPreview(filteredEntries);
@@ -1018,16 +939,6 @@
                 : "extra-spacing",
 
             hotkeys: CCHShared.normalizeHotkeys(optionHotkeys),
-
-            // specialTokenDescriptions: {
-            //     dup_all: els.descDupAll.value,
-            //     dup_left: els.descDupLeft.value,
-            //     dup_right: els.descDupRight.value,
-            //     left_shift: els.descLeftShift.value,
-            //     right_shift: els.descRightShift.value,
-            //     arpeggiate: els.descArpeggiate.value,
-            //    
-            // }
         };
     }
 
@@ -1090,13 +1001,6 @@
         els.hintDisplay.value = settings.hint_display || "always";
         els.keybrHintLayout.value = settings.keybr_hint_layout || "extra-spacing";
         syncHintTextSizeFieldBehavior();
-
-        // els.descDupAll.value = settings.specialTokenDescriptions.dup_all || "";
-        // els.descDupLeft.value = settings.specialTokenDescriptions.dup_left || "";
-        // els.descDupRight.value = settings.specialTokenDescriptions.dup_right || "";
-        // els.descLeftShift.value = settings.specialTokenDescriptions.left_shift || "";
-        // els.descRightShift.value = settings.specialTokenDescriptions.right_shift || "";
-        // els.descArpeggiate.value = settings.specialTokenDescriptions.arpeggiate || "";
 
         optionHotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
         updateHotkeyDisplays();
@@ -2357,19 +2261,6 @@
             goToPage(Number.parseInt(els.pageJumpInput.value, 10) || 1);
         }
     });
-
-    // [
-    //     els.showExtendedSpecialDescriptions,
-    //     els.descDupAll,
-    //     els.descDupLeft,
-    //     els.descDupRight,
-    //     els.descLeftShift,
-    //     els.descRightShift,
-    //     els.descArpeggiate
-    // ].forEach((el) => {
-    //     el.addEventListener("input", () => renderLoadedChords(currentSettingsFromForm()));
-    //     el.addEventListener("change", () => renderLoadedChords(currentSettingsFromForm()));
-    // });
 
     [
         els.hintBoxDarkModeColor,

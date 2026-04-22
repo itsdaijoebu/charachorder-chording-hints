@@ -910,6 +910,75 @@
     return value === "charachorder-default" ? "charachorder-default" : "best-match";
   }
 
+  function isAlphanumericCharacter(char) {
+    return /[\p{L}\p{N}]/u.test(String(char || ""));
+  }
+
+  function isPunctuationCharacter(char) {
+    return /\p{P}/u.test(String(char || ""));
+  }
+
+  function reorderSegmentTokensForBestMatch(tokens, outputText) {
+    const tokenItems = (Array.isArray(tokens) ? tokens : []).map((token, index) => ({
+      token,
+      index,
+      searchChar: token?.type === "char" ? String(token.char || "").toLocaleLowerCase() : "",
+      isAlphanumeric: token?.type === "char" && isAlphanumericCharacter(token.char),
+      isPunctuation: token?.type === "char" && isPunctuationCharacter(token.char)
+    }));
+
+    const matched = [];
+    const usedIndexes = new Set();
+    for (const outputChar of Array.from(String(outputText || "").toLocaleLowerCase())) {
+      const match = tokenItems.find((item) => {
+        if (usedIndexes.has(item.index)) {
+          return false;
+        }
+        if (!item.isAlphanumeric && !item.isPunctuation) {
+          return false;
+        }
+        return item.searchChar === outputChar;
+      });
+
+      if (match) {
+        usedIndexes.add(match.index);
+        matched.push(match.token);
+      }
+    }
+
+    const leadingPunctuation = [];
+    const trailingAlphanumeric = [];
+    const trailingOtherCharacters = [];
+    const trailingSpecials = [];
+
+    tokenItems.forEach((item) => {
+      if (usedIndexes.has(item.index)) {
+        return;
+      }
+      if (item.isPunctuation) {
+        leadingPunctuation.push(item.token);
+        return;
+      }
+      if (item.isAlphanumeric) {
+        trailingAlphanumeric.push(item.token);
+        return;
+      }
+      if (item.token?.type === "char") {
+        trailingOtherCharacters.push(item.token);
+        return;
+      }
+      trailingSpecials.push(item.token);
+    });
+
+    return [
+      ...leadingPunctuation,
+      ...matched,
+      ...trailingAlphanumeric,
+      ...trailingOtherCharacters,
+      ...trailingSpecials
+    ];
+  }
+
   function defaultSettings() {
     return {
       enabled: true,
@@ -951,6 +1020,7 @@
     defaultSettings,
     normalizeMinimumWordLength,
     normalizeHintCharacterOrderMode,
+    reorderSegmentTokensForBestMatch,
     chooseEntries,
     normalizeTokenForLookup,
     meaningfulInputCodes,

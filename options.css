@@ -377,26 +377,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.previewHeaderRow {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  margin-top: 12px;
-}
-
-.sourceBadge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 4px 10px;
-  background: var(--cch-badge-bg);
-  color: var(--cch-badge-text);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: lowercase;
-}
-
 .fieldLabel {
   display: grid;
   gap: 8px;
@@ -593,7 +573,6 @@ button.secondary {
 .status,
 .previewRowLight .previewLabel,
 .previewRowDark .previewLabel,
-.sourceBadge,
 dt,
 dd,
 summary,
@@ -607,11 +586,6 @@ summary,
 
 .muted {
   color: var(--cch-muted);
-}
-
-.sourceBadge {
-  background: var(--cch-badge-bg);
-  color: var(--cch-badge-text);
 }
 
 th,
@@ -666,10 +640,6 @@ textarea::placeholder {
   min-width: 220px;
   display: grid;
   gap: 8px;
-}
-
-.themeModeLabel {
-  font-weight: 600;
 }
 
 .themeToggleRow {

@@ -296,20 +296,6 @@
         }
     }
 
-    function shouldLogEntertrainedOptimization() {
-        return STATE.settings.debugLogging && currentSiteAdapter()?.key === "entertrained";
-    }
-
-    function logEntertrainedOptimization(label, payload) {
-        if (!shouldLogEntertrainedOptimization()) return;
-
-        try {
-            log(`[cch-entr-opt] ${label} ${JSON.stringify(payload)}`);
-        } catch (error) {
-            log(`[cch-entr-opt] ${label} <unserializable>`);
-        }
-    }
-
     function visibleDebugText(text) {
         return String(text || "")
             .replace(/\uE000/g, "<E000>")
@@ -523,26 +509,6 @@
             rect.bottom > 0 &&
             rect.top < window.innerHeight
         );
-    }
-
-    function rectsIntersect(a, b) {
-        return (
-            a.right > b.left &&
-            a.left < b.right &&
-            a.bottom > b.top &&
-            a.top < b.bottom
-        );
-    }
-
-    function filterWordsToContainerViewport(words, container) {
-        if (!(container instanceof HTMLElement)) return words;
-
-        const containerRect = container.getBoundingClientRect();
-        if (containerRect.width <= 0 || containerRect.height <= 0) {
-            return [];
-        }
-
-        return words.filter((word) => rectsIntersect(word.getBoundingClientRect(), containerRect));
     }
 
     function filterWordsToFirstRows(words, rowLimit) {
@@ -1227,81 +1193,12 @@
         return el;
     }
 
-    function isAlphanumericCharacter(char) {
-        return /[\p{L}\p{N}]/u.test(String(char || ""));
-    }
-
-    function isPunctuationCharacter(char) {
-        return /\p{P}/u.test(String(char || ""));
-    }
-
-    function reorderSegmentTokensForBestMatch(tokens, outputText) {
-        const tokenItems = (Array.isArray(tokens) ? tokens : []).map((token, index) => ({
-            token,
-            index,
-            searchChar: token?.type === "char" ? String(token.char || "").toLocaleLowerCase() : "",
-            isAlphanumeric: token?.type === "char" && isAlphanumericCharacter(token.char),
-            isPunctuation: token?.type === "char" && isPunctuationCharacter(token.char)
-        }));
-
-        const matched = [];
-        const usedIndexes = new Set();
-        for (const outputChar of Array.from(String(outputText || "").toLocaleLowerCase())) {
-            const match = tokenItems.find((item) => {
-                if (usedIndexes.has(item.index)) {
-                    return false;
-                }
-                if (!item.isAlphanumeric && !item.isPunctuation) {
-                    return false;
-                }
-                return item.searchChar === outputChar;
-            });
-
-            if (match) {
-                usedIndexes.add(match.index);
-                matched.push(match.token);
-            }
-        }
-
-        const leadingPunctuation = [];
-        const trailingAlphanumeric = [];
-        const trailingOtherCharacters = [];
-        const trailingSpecials = [];
-
-        tokenItems.forEach((item) => {
-            if (usedIndexes.has(item.index)) {
-                return;
-            }
-            if (item.isPunctuation) {
-                leadingPunctuation.push(item.token);
-                return;
-            }
-            if (item.isAlphanumeric) {
-                trailingAlphanumeric.push(item.token);
-                return;
-            }
-            if (item.token?.type === "char") {
-                trailingOtherCharacters.push(item.token);
-                return;
-            }
-            trailingSpecials.push(item.token);
-        });
-
-        return [
-            ...leadingPunctuation,
-            ...matched,
-            ...trailingAlphanumeric,
-            ...trailingOtherCharacters,
-            ...trailingSpecials
-        ];
-    }
-
     function displayTokensForSegment(segment, outputText) {
         const tokens = Array.isArray(segment?.inputTokens) ? segment.inputTokens : [];
         if (STATE.settings.hintCharacterOrderMode !== "best-match") {
             return tokens;
         }
-        return reorderSegmentTokensForBestMatch(tokens, outputText);
+        return CCHShared.reorderSegmentTokensForBestMatch(tokens, outputText);
     }
 
     function renderHintRows(entries, outputText) {
@@ -2432,7 +2329,6 @@
 
         const words = Array.isArray(discoveredWords) ? discoveredWords : getWordElements(paragraph);
         const includeDebugSummary = STATE.settings.debugLogging;
-        const shouldLogTiming = shouldLogEntertrainedOptimization();
         const shouldPremeasureInlineGeometry =
             renderMode === "inline" &&
             adapterFlag("premeasureInlineGeometry");
@@ -2441,10 +2337,6 @@
         const matchPlans = [];
         let matchedCount = 0;
         let unmatchedCount = 0;
-        const startedAt = shouldLogTiming ? performance.now() : 0;
-        let matchingCompletedAt = startedAt;
-        let premeasureCompletedAt = startedAt;
-        let renderCompletedAt = startedAt;
 
         for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
             const result = findMatchFromWords(words, wordIndex);
@@ -2459,11 +2351,6 @@
                 }
             }
         }
-        if (shouldLogTiming) {
-            matchingCompletedAt = performance.now();
-            premeasureCompletedAt = matchingCompletedAt;
-            renderCompletedAt = matchingCompletedAt;
-        }
 
         if (shouldPremeasureInlineGeometry) {
             matchPlans.forEach((plan) => {
@@ -2473,10 +2360,6 @@
                     measuredSubstringGeometry(word, plan.result, labelMatch);
                 });
             });
-            if (shouldLogTiming) {
-                premeasureCompletedAt = performance.now();
-                renderCompletedAt = premeasureCompletedAt;
-            }
         }
 
         matchPlans.forEach((plan) => {
@@ -2491,9 +2374,6 @@
                 matches.push(matchSummary);
             }
         });
-        if (shouldLogTiming) {
-            renderCompletedAt = performance.now();
-        }
 
         const summary = {
             site: currentSiteAdapter()?.key || "unknown",
@@ -2502,24 +2382,6 @@
             matchedCount,
             unmatchedCount
         };
-
-        if (shouldLogTiming) {
-            summary.timings = {
-                matchingMs: Number((matchingCompletedAt - startedAt).toFixed(2)),
-                premeasureMs: Number((premeasureCompletedAt - matchingCompletedAt).toFixed(2)),
-                renderMs: Number((renderCompletedAt - premeasureCompletedAt).toFixed(2)),
-                totalMs: Number((renderCompletedAt - startedAt).toFixed(2))
-            };
-
-            logEntertrainedOptimization("paragraph", {
-                paragraphIndex,
-                wordCount: words.length,
-                matchedCount,
-                unmatchedCount,
-                matchPlanCount: matchPlans.length,
-                timings: summary.timings
-            });
-        }
 
         if (includeDebugSummary) {
             summary.activeWordCount = words.filter((word) => wordRecordHasClass(word, "active")).length;
@@ -2556,10 +2418,6 @@
         cancelDeferredParagraphAnnotation();
         const passToken = ++STATE.annotationPassToken;
         STATE.annotationMeasurementCache = new WeakMap();
-        const shouldLogTiming = shouldLogEntertrainedOptimization();
-        const startedAt = shouldLogTiming ? performance.now() : 0;
-        let discoveryCompletedAt = startedAt;
-        let annotationCompletedAt = startedAt;
 
         if (!STATE.settings.enabled || !STATE.dictionary) {
             STATE.trackedParagraphs.forEach((paragraph) => clearAnnotationsWithin(paragraph, true));
@@ -2602,10 +2460,6 @@
         const wordLists = paragraphs.map((paragraph) => getWordElements(paragraph));
         const wordRecordLists = wordLists.map((words) => createWordRecords(words, shouldCacheWordRects));
         const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordRecordLists);
-        if (shouldLogTiming) {
-            discoveryCompletedAt = performance.now();
-            annotationCompletedAt = discoveryCompletedAt;
-        }
 
         if (adapter.key === "keybr") {
             paragraphs.forEach((paragraph, index) => {
@@ -2667,9 +2521,6 @@
         }
 
         const summaries = annotateParagraphEntries(immediateEntries, renderMode);
-        if (shouldLogTiming) {
-            annotationCompletedAt = performance.now();
-        }
         const totalWords = summaries.reduce((sum, item) => sum + item.wordCount, 0);
         const totalMatches = summaries.reduce((sum, item) => sum + item.matchedCount, 0);
 
@@ -2688,42 +2539,6 @@
             forced: force,
             deferredParagraphCount: deferredEntries.length
         });
-        if (shouldLogTiming) {
-            const aggregatedTimings = summaries.reduce((accumulator, summary) => {
-                const timings = summary?.timings;
-                if (!timings) {
-                    return accumulator;
-                }
-
-                accumulator.matchingMs += Number(timings.matchingMs) || 0;
-                accumulator.premeasureMs += Number(timings.premeasureMs) || 0;
-                accumulator.renderMs += Number(timings.renderMs) || 0;
-                accumulator.paragraphTotalMs += Number(timings.totalMs) || 0;
-                return accumulator;
-            }, {
-                matchingMs: 0,
-                premeasureMs: 0,
-                renderMs: 0,
-                paragraphTotalMs: 0
-            });
-
-            logEntertrainedOptimization("pass", {
-                forced: force,
-                paragraphCount: immediateEntries.length,
-                deferredParagraphCount: deferredEntries.length,
-                totalWords,
-                totalMatches,
-                timings: {
-                    discoveryMs: Number((discoveryCompletedAt - startedAt).toFixed(2)),
-                    annotationMs: Number((annotationCompletedAt - discoveryCompletedAt).toFixed(2)),
-                    totalMs: Number((annotationCompletedAt - startedAt).toFixed(2)),
-                    paragraphMatchingMs: Number(aggregatedTimings.matchingMs.toFixed(2)),
-                    paragraphPremeasureMs: Number(aggregatedTimings.premeasureMs.toFixed(2)),
-                    paragraphRenderMs: Number(aggregatedTimings.renderMs.toFixed(2)),
-                    paragraphTotalMs: Number(aggregatedTimings.paragraphTotalMs.toFixed(2))
-                }
-            });
-        }
         STATE.annotationMeasurementCache = null;
 
         if (deferredEntries.length) {
@@ -3071,9 +2886,6 @@
                 if (currentSiteAdapter()?.key === "entertrained") {
                     const nextSignature = buildPromptSignature();
                     if (nextSignature && nextSignature === STATE.lastPromptSignature) {
-                        logEntertrainedOptimization("load-skip", {
-                            reason: "signature-unchanged"
-                        });
                         return;
                     }
                 }
