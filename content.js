@@ -19,6 +19,9 @@
         containerRebindTimer: null,
         maxLookupWordCount: 1,
         overlayRoot: null,
+        overlayLabels: [],
+        overlayRepositionFrame: null,
+        overlayResizeObserver: null,
         substringLookup: null,
         substringMatchCache: new Map()
     };
@@ -76,12 +79,12 @@
                 return {
                     subtree: true,
                     childList: true,
-                    characterData: true,
+                    characterData: false,
                     attributes: false
                 };
             },
             mutationIsRelevant(mutation) {
-                return mutation.type === "childList" || mutation.type === "characterData";
+                return entertrainedMutationLooksStructural(mutation);
             }
         },
         {
@@ -159,7 +162,6 @@
                 return "overlay";
             },
             refreshOnContainerRebind: true,
-            observePromptMutations: false,
             keybrHintLayout() {
                 return ["consistent", "extra-spacing"].includes(STATE.settings.keybr_hint_layout)
                     ? STATE.settings.keybr_hint_layout
@@ -222,6 +224,36 @@
                     visibleWordCount: words.length,
                     text: texts.join(" ")
                 });
+            },
+            observerConfig() {
+                return {
+                    subtree: true,
+                    childList: true,
+                    characterData: true,
+                    attributes: false
+                };
+            },
+            mutationIsRelevant(mutation) {
+                return mutation.type === "childList" || mutation.type === "characterData";
+            },
+            mutationRefreshMode(mutation) {
+                if (mutation.type === "childList") {
+                    const changedNodes = [
+                        ...Array.from(mutation.addedNodes || []),
+                        ...Array.from(mutation.removedNodes || [])
+                    ];
+                    const changedWords = changedNodes
+                        .filter((node) => node instanceof Element)
+                        .flatMap((node) => {
+                            if (node.tagName === "SPAN") return [node];
+                            return Array.from(node.querySelectorAll?.("span") || []);
+                        });
+                    if (changedWords.length > 2) {
+                        return "annotate";
+                    }
+                }
+
+                return "reposition";
             }
         }
     ];
@@ -419,13 +451,37 @@
         if (addedSignature || removedSignature) {
             if (addedSignature !== removedSignature) return "annotate";
             if (addedIndexes.length <= 1 && removedIndexes.length <= 1) return false;
-            return "check";
+            return "reposition";
         }
 
         const word = mutationTargetWord(mutation);
         if (word?.classList.contains("active")) return false;
 
-        return "check";
+        return "reposition";
+    }
+
+    function entertrainedMutationLooksStructural(mutation) {
+        if (mutation.type !== "childList") return false;
+
+        const target = mutation.target instanceof Element ? mutation.target : null;
+        if (target === STATE.observedPromptContainer) {
+            return true;
+        }
+
+        const changedNodes = [
+            ...Array.from(mutation.addedNodes || []),
+            ...Array.from(mutation.removedNodes || [])
+        ].filter((node) => node instanceof Element);
+
+        if (!changedNodes.length) {
+            return false;
+        }
+
+        return changedNodes.some((node) => (
+            node.classList.contains("p-box") ||
+            node.classList.contains("word") ||
+            node.querySelector?.(".p-box, .word")
+        ));
     }
 
     function hexToRgba(hex, opacity) {
@@ -651,14 +707,114 @@
     }
 
     function clearOverlayAnnotations() {
+        STATE.overlayLabels = [];
         if (STATE.overlayRoot?.isConnected) {
             STATE.overlayRoot.replaceChildren();
         }
     }
 
     function removeOverlayAnnotations() {
+        window.cancelAnimationFrame(STATE.overlayRepositionFrame || 0);
+        STATE.overlayRepositionFrame = null;
+        STATE.overlayResizeObserver?.disconnect();
+        STATE.overlayResizeObserver = null;
+        STATE.overlayLabels = [];
         STATE.overlayRoot?.remove();
         STATE.overlayRoot = null;
+    }
+
+
+    function positionOverlayLabel(record, overlayPosition = null) {
+        if (!record || !record.label?.isConnected || !record.word) {
+            return false;
+        }
+
+        const root = STATE.overlayRoot;
+        if (!root?.isConnected) {
+            return false;
+        }
+
+        const rect = wordRecordRect(record.word);
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+            record.label.style.display = "none";
+            return false;
+        }
+
+        record.label.style.removeProperty("display");
+        const nextOverlayPosition = overlayPosition || overlayPositionFromViewportRect(root, rect);
+        const anchor = hintAnchorOffset(record.word, record.match, record.labelMatch, rect);
+        record.label.style.left = STATE.settings.hint_position === "center"
+            ? `${nextOverlayPosition.left + anchor.center}px`
+            : `${nextOverlayPosition.left + anchor.left}px`;
+        record.label.style.top = `${nextOverlayPosition.top}px`;
+        return true;
+    }
+
+    function refreshOverlayPositions() {
+        const root = STATE.overlayRoot;
+        if (!root?.isConnected || !STATE.overlayLabels.length) {
+            return;
+        }
+
+        syncOverlayTypography(root);
+        const nextRecords = [];
+        for (const record of STATE.overlayLabels) {
+            if (!record?.label?.isConnected || !wordRecordElement(record.word)?.isConnected) {
+                record?.label?.remove();
+                continue;
+            }
+
+            if (positionOverlayLabel(record)) {
+                nextRecords.push(record);
+            }
+        }
+
+        STATE.overlayLabels = nextRecords;
+    }
+
+    function scheduleOverlayReposition() {
+        if (adapterRenderMode() !== "overlay") {
+            return;
+        }
+
+        if (!STATE.overlayRoot?.childElementCount || !STATE.overlayLabels.length) {
+            return;
+        }
+
+        if (STATE.overlayRepositionFrame != null) {
+            return;
+        }
+
+        STATE.overlayRepositionFrame = window.requestAnimationFrame(() => {
+            STATE.overlayRepositionFrame = null;
+            refreshOverlayPositions();
+        });
+    }
+
+    function refreshOverlayTrackingObservers() {
+        STATE.overlayResizeObserver?.disconnect();
+        STATE.overlayResizeObserver = null;
+
+        if (adapterRenderMode() !== "overlay") {
+            return;
+        }
+
+        const adapter = currentSiteAdapter();
+        const promptContainer = getPromptContainer();
+        const overlayParent = adapter?.getOverlayRootParent?.() || null;
+        const targets = [promptContainer, overlayParent].filter((target, index, all) => (
+            target instanceof HTMLElement && all.indexOf(target) === index
+        ));
+
+        if (!targets.length || typeof ResizeObserver !== "function") {
+            return;
+        }
+
+        STATE.overlayResizeObserver = new ResizeObserver(() => {
+            scheduleOverlayReposition();
+        });
+
+        targets.forEach((target) => STATE.overlayResizeObserver.observe(target));
     }
 
     function is_left_variant(token_key) {
@@ -1500,12 +1656,16 @@
             if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
                 label.classList.add("cch-keybr-overlay-extra-spacing");
             }
-            const anchor = hintAnchorOffset(words[startIndex], match, labelMatch, rect);
-            label.style.left = STATE.settings.hint_position === "center"
-                ? `${overlayPosition.left + anchor.center}px`
-                : `${overlayPosition.left + anchor.left}px`;
-            label.style.top = `${overlayPosition.top}px`;
+
+            const record = {
+                label,
+                word: words[startIndex],
+                match,
+                labelMatch
+            };
+            positionOverlayLabel(record, overlayPosition);
             root.appendChild(label);
+            STATE.overlayLabels.push(record);
         });
 
         if (!includeDebugSummary) {
@@ -1619,6 +1779,7 @@
         if (renderMode === "overlay") {
             clearOverlayAnnotations();
             syncOverlayTypography(getOverlayRoot());
+            refreshOverlayTrackingObservers();
         } else {
             removeOverlayAnnotations();
         }
@@ -1707,13 +1868,13 @@
             const nextSignature = buildPromptSignature();
 
             if (nextSignature === STATE.lastPromptSignature) {
-                log("Prompt-change check produced no signature change", { reason });
+                log("Prompt-generation check produced no signature change", { reason });
                 return;
             }
 
             log("Prompt content changed; refreshing hints", { reason });
             scheduleAnnotation(true);
-        }, 80);
+        }, 140);
     }
 
     function isAnnotationNode(node) {
@@ -1764,8 +1925,9 @@
         }
 
         STATE.promptObserver = new MutationObserver((mutations) => {
-            let sawRelevantChange = false;
+            let sawGenerationCandidate = false;
             let shouldAnnotateDirectly = false;
+            let shouldRepositionOverlay = false;
 
             for (const mutation of mutations) {
                 if (mutationOnlyTouchesAnnotations(mutation)) {
@@ -1773,25 +1935,35 @@
                 }
 
                 const refreshMode = adapter.mutationRefreshMode?.(mutation);
-                if (refreshMode) {
-                    sawRelevantChange = true;
-                    shouldAnnotateDirectly = refreshMode === "annotate";
+                if (refreshMode === "annotate") {
+                    sawGenerationCandidate = true;
+                    shouldAnnotateDirectly = true;
                     break;
+                }
+
+                if (refreshMode === "reposition") {
+                    shouldRepositionOverlay = true;
+                    continue;
                 }
 
                 if (adapter.mutationIsRelevant(mutation)) {
-                    sawRelevantChange = true;
-                    break;
+                    sawGenerationCandidate = true;
                 }
             }
 
-            if (!sawRelevantChange) return;
             if (shouldAnnotateDirectly) {
                 scheduleAnnotation(true);
                 return;
             }
 
-            handlePotentialPromptChange("prompt-container-mutation");
+            if (sawGenerationCandidate) {
+                handlePotentialPromptChange("prompt-container-mutation");
+                return;
+            }
+
+            if (shouldRepositionOverlay) {
+                scheduleOverlayReposition();
+            }
         });
 
         STATE.promptObserver.observe(container, adapter.observerConfig());
@@ -1821,6 +1993,7 @@
         }
 
         observePromptContainer(nextContainer);
+        refreshOverlayTrackingObservers();
         if (adapter?.refreshOnContainerRebind) {
             scheduleAnnotation(true);
             return;
@@ -1962,14 +2135,12 @@
         });
 
         window.addEventListener("resize", () => {
-            if (adapterRenderMode() === "overlay") {
-                if (!STATE.overlayRoot?.childElementCount || !STATE.observedPromptContainer?.isConnected) {
-                    return;
-                }
-
-                scheduleAnnotation(true);
-            }
+            scheduleOverlayReposition();
         });
+
+        window.addEventListener("scroll", () => {
+            scheduleOverlayReposition();
+        }, true);
     }
 
     init().catch((error) => {
