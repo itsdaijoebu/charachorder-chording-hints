@@ -130,6 +130,13 @@ input[type="color"]{
   text-align: center;
 }
 
+.previewWordText {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  font-weight: 600;
+}
+
 .previewHint {
   position: absolute;
   top: 0;
@@ -155,9 +162,18 @@ input[type="color"]{
   display: inline-flex;
   align-items: center;
   padding: 0.08em 0.18em;
-  border: 2px dotted transparent;
   border-radius: 6px;
   line-height: 1.1;
+}
+
+.previewOutlineSegment {
+  outline: 2px dotted transparent;
+  outline-offset: 2px;
+  border-radius: 0.2em;
+}
+
+.previewWordOutlined .previewOutlineSegment {
+  outline-color: var(--cch-preview-word-outline-color, transparent);
 }
 
 .previewAlignLeft {
@@ -793,8 +809,8 @@ input[type="color"]::-moz-color-swatch {
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
-.tooltipable:hover::after,
-.tooltipable:focus-within::after {
+/*.tooltipable:focus-within::after,*/
+.tooltipable:hover::after {
   opacity: 1;
   transform: translateY(0);
 }

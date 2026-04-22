@@ -89,7 +89,7 @@
                     <div class="popupPreviewCanvas">
                         <div id="popupDarkPreviewWord" class="popupPreviewWord">
                             <div id="popupDarkPreviewHint" class="popupPreviewHint">dark</div>
-                            <span id="popupDarkPreviewText" class="popupPreviewWordText">Dark</span>
+                            <span id="popupDarkPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
                         </div>
                     </div>
                 </div>
@@ -97,7 +97,7 @@
                     <div class="popupPreviewCanvas">
                         <div id="popupLightPreviewWord" class="popupPreviewWord">
                             <div id="popupLightPreviewHint" class="popupPreviewHint">light</div>
-                            <span id="popupLightPreviewText" class="popupPreviewWordText">Light</span>
+                            <span id="popupLightPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
                         </div>
                     </div>
                 </div>
@@ -107,17 +107,25 @@
         <section class="popupSubsection">
             <h2>Behavior</h2>
             <div class="field_grid compactFields">
-                <label class="popupCheck tooltipable tooltipOpenUpwards" for="popupEnableSubstringHints"
-                       data-tooltip="Enabled: When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater'&#10;&#10;May affect performance, so disable if causing slowdowns.">
-                    <input id="popupEnableSubstringHints" type="checkbox">
-                    <span>Enable Substring Hints</span>
-                    <span class="tooltipIcon" aria-hidden="true"></span>
-                </label>
+                <div class="popupBehaviorChecks">
+                    <label class="popupCheck tooltipable tooltipOpenUpwards" for="popupEnableSubstringHints"
+                           data-tooltip="Enabled: When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater'&#10;&#10;May affect performance, so disable if causing slowdowns.">
+                        <input id="popupEnableSubstringHints" type="checkbox">
+                        <span>Substring Hints</span>
+                        <span class="tooltipIcon" aria-hidden="true"></span>
+                    </label>
+                    <label class="popupCheck tooltipable tooltipOpenUpwards tooltipShiftLeft" for="popupShowChordableWordOutlines"
+                           data-tooltip="Shows outlines around chordable output. May impact performance, so disable if causing slowdowns">
+                        <input id="popupShowChordableWordOutlines" type="checkbox">
+                        <span>Show outlines</span>
+                        <span class="tooltipIcon" aria-hidden="true"></span>
+                    </label>
+                </div>
                 <div class="popupBehaviorPair">
                     <label class="fieldLabel" for="popupHintCharacterOrderMode">
                     <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
                           data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
-                        Chord display order <span class="tooltipIcon" aria-hidden="true"></span></span>
+                        Input display order <span class="tooltipIcon" aria-hidden="true"></span></span>
                         <select id="popupHintCharacterOrderMode">
                             <option value="best-match">Best match</option>
                             <option value="charachorder-default">CharaChorder default</option>

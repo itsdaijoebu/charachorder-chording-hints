@@ -51,6 +51,20 @@ body.light {
   --cch-label-offset-y: -0.55em;
 }
 
+.cch-word-outline {
+  position: absolute;
+  outline: 2px dotted var(--cch-hint-box-dark-mode-color);
+  outline-offset: 2px;
+  border-radius: 0.25em;
+  pointer-events: none;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+body.light .cch-word-outline {
+  outline-color: var(--cch-hint-box-light-mode-color);
+}
+
 .cch-hint-label {
   position: absolute;
   left: 50%;
@@ -187,10 +201,6 @@ body.light {
 .cch-token-special.cch-token-hand-right .cch-token-icon-ghost {
   left: 0;
   opacity: var(--cch-hand-ghost-opacity);
-}
-
-.cch-debug-parent {
-  /*outline: 1px dashed rgba(59, 130, 246, 0.5) !important;*/
 }
 
 .cch-token-separator.cch-token-special {

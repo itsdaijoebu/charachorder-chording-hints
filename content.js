@@ -20,6 +20,7 @@
         maxLookupWordCount: 1,
         overlayRoot: null,
         overlayLabels: [],
+        overlayOutlines: [],
         overlayRepositionFrame: null,
         overlayResizeObserver: null,
         substringLookup: null,
@@ -31,6 +32,7 @@
         {
             key: "entertrained",
             renderMode: "inline",
+            refreshOnContainerRebind: true,
             matchesLocation() {
                 return (
                     location.hostname === "entertrained.app" &&
@@ -83,6 +85,15 @@
                     characterData: false,
                     attributes: false
                 };
+            },
+            promptRefreshDebounceMs() {
+                return 20;
+            },
+            containerRebindDelayMs() {
+                return 10;
+            },
+            annotationScheduleDelayMs() {
+                return 0;
             },
             mutationIsRelevant(mutation) {
                 return entertrainedMutationLooksStructural(mutation);
@@ -438,6 +449,15 @@
 
     function currentSiteAdapter() {
         return SITE_ADAPTERS.find((adapter) => adapter.matchesLocation()) || null;
+    }
+
+    function adapterDelayMs(propertyName, fallback, ...args) {
+        const adapter = currentSiteAdapter();
+        const rawValue = typeof adapter?.[propertyName] === "function"
+            ? adapter[propertyName](...args)
+            : adapter?.[propertyName];
+        const value = Number(rawValue);
+        return Number.isFinite(value) && value >= 0 ? value : fallback;
     }
 
     function adapterRenderMode(adapter = currentSiteAdapter()) {
@@ -823,7 +843,7 @@
         if (clearSiteClasses) {
             root.classList.remove("cch-keybr-prompt");
         }
-        root.classList.remove("cch-debug-parent");
+        root.querySelectorAll(".cch-word-outline").forEach((el) => el.remove());
         root.querySelectorAll(".cch-hint-label").forEach((el) => el.remove());
 
         root.querySelectorAll(".cch-host").forEach((el) => {
@@ -872,7 +892,8 @@
             return {
                 left: rect.left,
                 top: rect.top,
-                width: rect.width
+                width: rect.width,
+                height: rect.height
             };
         }
 
@@ -885,7 +906,8 @@
         return {
             left: (rect.left - rootRect.left) / safeScaleX,
             top: (rect.top - rootRect.top) / safeScaleY,
-            width: rect.width / safeScaleX
+            width: rect.width / safeScaleX,
+            height: rect.height / safeScaleY
         };
     }
 
@@ -911,6 +933,7 @@
 
     function clearOverlayAnnotations() {
         STATE.overlayLabels = [];
+        STATE.overlayOutlines = [];
         if (STATE.overlayRoot?.isConnected) {
             STATE.overlayRoot.replaceChildren();
         }
@@ -922,8 +945,53 @@
         STATE.overlayResizeObserver?.disconnect();
         STATE.overlayResizeObserver = null;
         STATE.overlayLabels = [];
+        STATE.overlayOutlines = [];
         STATE.overlayRoot?.remove();
         STATE.overlayRoot = null;
+    }
+
+    function createOutlineElement() {
+        const outline = document.createElement("span");
+        outline.className = "cch-word-outline";
+        outline.setAttribute("aria-hidden", "true");
+        return outline;
+    }
+
+    function positionInlineOutline(outline, wordRect, rect) {
+        if (!(outline instanceof HTMLElement) || !wordRect || !rect) {
+            return false;
+        }
+
+        outline.style.left = `${rect.left - wordRect.left}px`;
+        outline.style.top = `${rect.top - wordRect.top}px`;
+        outline.style.width = `${rect.width}px`;
+        outline.style.height = `${rect.height}px`;
+        return true;
+    }
+
+    function positionOverlayOutline(record) {
+        if (!record?.outline || !record.word) {
+            return false;
+        }
+
+        const root = STATE.overlayRoot;
+        if (!root?.isConnected) {
+            return false;
+        }
+
+        const rect = outlineViewportRectForRecord(record);
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+            record.outline.style.display = "none";
+            return false;
+        }
+
+        record.outline.style.removeProperty("display");
+        const overlayPosition = overlayPositionFromViewportRect(root, rect);
+        record.outline.style.left = `${overlayPosition.left}px`;
+        record.outline.style.top = `${overlayPosition.top}px`;
+        record.outline.style.width = `${overlayPosition.width}px`;
+        record.outline.style.height = `${overlayPosition.height}px`;
+        return true;
     }
 
 
@@ -955,12 +1023,12 @@
 
     function refreshOverlayPositions() {
         const root = STATE.overlayRoot;
-        if (!root?.isConnected || !STATE.overlayLabels.length) {
+        if (!root?.isConnected || (!STATE.overlayLabels.length && !STATE.overlayOutlines.length)) {
             return;
         }
 
         syncOverlayTypography(root);
-        const nextRecords = [];
+        const nextLabelRecords = [];
         for (const record of STATE.overlayLabels) {
             if (!record?.label?.isConnected || !wordRecordElement(record.word)?.isConnected) {
                 record?.label?.remove();
@@ -968,11 +1036,24 @@
             }
 
             if (positionOverlayLabel(record)) {
-                nextRecords.push(record);
+                nextLabelRecords.push(record);
             }
         }
 
-        STATE.overlayLabels = nextRecords;
+        const nextOutlineRecords = [];
+        for (const record of STATE.overlayOutlines) {
+            if (!record?.outline?.isConnected || !wordRecordElement(record.word)?.isConnected) {
+                record?.outline?.remove();
+                continue;
+            }
+
+            if (positionOverlayOutline(record)) {
+                nextOutlineRecords.push(record);
+            }
+        }
+
+        STATE.overlayLabels = nextLabelRecords;
+        STATE.overlayOutlines = nextOutlineRecords;
         logKeybrOverlayState("after-reposition");
     }
 
@@ -1580,6 +1661,20 @@
         return label;
     }
 
+    function ensureRelativePositionHost(wordEl) {
+        if (!(wordEl instanceof HTMLElement)) {
+            return;
+        }
+
+        wordEl.classList.add("cch-host");
+        wordEl.dataset.cchAnnotated = "true";
+
+        if (getComputedStyle(wordEl).position === "static") {
+            wordEl.dataset.cchOriginalPosition = "static";
+            wordEl.style.position = "relative";
+        }
+    }
+
     function matchLabels(match) {
         if (Array.isArray(match?.labels) && match.labels.length) {
             return match.labels;
@@ -1633,6 +1728,31 @@
         };
     }
 
+    function matchedOutputTextForLabel(match, labelMatch) {
+        const rawText = String(match?.word || "");
+        const normalizedText = String(match?.normalized || "");
+        if (!rawText || !normalizedText) {
+            return rawText;
+        }
+
+        const anchor = labelMatch?.anchor;
+        const start = anchor?.type === "substring"
+            ? Math.max(0, Math.min(normalizedText.length, Number(anchor.start) || 0))
+            : 0;
+        const end = anchor?.type === "substring"
+            ? Math.max(start, Math.min(normalizedText.length, Number(anchor.end) || start))
+            : normalizedText.length;
+        const rawOffsets = mapNormalizedOffsetsToRawOffsets(rawText, normalizedText, start, end);
+
+        if (rawOffsets && rawOffsets.end > rawOffsets.start) {
+            return rawText.slice(rawOffsets.start, rawOffsets.end);
+        }
+
+        return anchor?.type === "substring"
+            ? normalizedText.slice(start, end)
+            : normalizedText;
+    }
+
     function collectRenderableTextSegments(root) {
         if (!(root instanceof HTMLElement)) {
             return [];
@@ -1655,6 +1775,7 @@
         while (currentNode) {
             const value = currentNode.nodeValue || "";
             const boundaries = [0];
+            let searchableText = "";
             let searchableLength = 0;
 
             for (let index = 0; index < value.length; index += 1) {
@@ -1662,6 +1783,7 @@
                     continue;
                 }
                 searchableLength += 1;
+                searchableText += value[index];
                 boundaries[searchableLength] = index + 1;
             }
 
@@ -1670,7 +1792,8 @@
                     node: currentNode,
                     start: searchableOffset,
                     end: searchableOffset + searchableLength,
-                    boundaries
+                    boundaries,
+                    text: searchableText
                 });
                 searchableOffset += searchableLength;
             }
@@ -1679,6 +1802,12 @@
         }
 
         return segments;
+    }
+
+    function searchableTextFromSegments(segments) {
+        return (Array.isArray(segments) ? segments : [])
+            .map((segment) => String(segment?.text || ""))
+            .join("");
     }
 
     function locateTextPosition(segments, offset) {
@@ -1707,9 +1836,10 @@
         };
     }
 
-    function measuredSubstringViewportRect(word, match, labelMatch) {
+    function measuredSubstringRange(word, match, labelMatch) {
         const anchor = labelMatch?.anchor;
-        if (!anchor || anchor.type !== "substring") {
+        const safeMatchNormalized = String(match?.normalized || "");
+        if (!safeMatchNormalized) {
             return null;
         }
 
@@ -1718,12 +1848,23 @@
             return null;
         }
 
-        const rawOffsets = mapNormalizedOffsetsToRawOffsets(
-            wordRecordText(word),
-            match?.normalized,
-            Number(anchor.start) || 0,
-            Number(anchor.end) || 0
-        );
+        const rawOffsets = anchor?.type === "substring"
+            ? mapNormalizedOffsetsToRawOffsets(
+                wordRecordText(word),
+                safeMatchNormalized,
+                Number(anchor.start) || 0,
+                Number(anchor.end) || 0
+            )
+            : (
+                Number(match?.wordCount) === 1
+                    ? mapNormalizedOffsetsToRawOffsets(
+                        wordRecordText(word),
+                        safeMatchNormalized,
+                        0,
+                        safeMatchNormalized.length
+                    )
+                    : null
+            );
         if (!rawOffsets) {
             return null;
         }
@@ -1733,8 +1874,17 @@
             return null;
         }
 
-        const rangeStart = locateTextPosition(segments, rawOffsets.start);
-        const rangeEnd = locateTextPosition(segments, rawOffsets.end);
+        const liveSearchText = searchableTextFromSegments(segments);
+        const safeWordText = String(wordRecordText(word) || "").replace(/\uE000/g, "");
+        const liveOffsets = liveSearchText.toLocaleLowerCase() === safeWordText.toLocaleLowerCase()
+            ? rawOffsets
+            : mapOriginalOffsetsToLiveOffsets(safeWordText, liveSearchText, rawOffsets.start, rawOffsets.end);
+        if (!liveOffsets) {
+            return null;
+        }
+
+        const rangeStart = locateTextPosition(segments, liveOffsets.start);
+        const rangeEnd = locateTextPosition(segments, liveOffsets.end);
         if (!rangeStart || !rangeEnd) {
             return null;
         }
@@ -1742,6 +1892,139 @@
         const range = document.createRange();
         range.setStart(rangeStart.node, rangeStart.offset);
         range.setEnd(rangeEnd.node, rangeEnd.offset);
+        return range;
+    }
+
+    function mapOriginalOffsetsToLiveOffsets(originalText, liveText, start, end) {
+        const safeOriginalText = String(originalText || "");
+        const safeLiveText = String(liveText || "");
+        if (!safeOriginalText || !safeLiveText) {
+            return null;
+        }
+
+        const originalToLive = [];
+        let liveIndex = 0;
+
+        for (let originalIndex = 0; originalIndex < safeOriginalText.length; originalIndex += 1) {
+            const target = safeOriginalText[originalIndex].toLocaleLowerCase();
+            let found = false;
+
+            while (liveIndex < safeLiveText.length) {
+                if (safeLiveText[liveIndex].toLocaleLowerCase() === target) {
+                    originalToLive[originalIndex] = liveIndex;
+                    liveIndex += 1;
+                    found = true;
+                    break;
+                }
+                liveIndex += 1;
+            }
+
+            if (!found) {
+                return null;
+            }
+        }
+
+        if (start < 0 || end > safeOriginalText.length || start >= end) {
+            return null;
+        }
+
+        return {
+            start: originalToLive[start],
+            end: originalToLive[end - 1] + 1
+        };
+    }
+
+    function measuredSubstringViewportRects(word, match, labelMatch) {
+        const range = measuredSubstringRange(word, match, labelMatch);
+        if (!range) {
+            return [];
+        }
+
+        const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 || rect.height > 0);
+        if (rects.length) {
+            return mergeAdjacentClientRects(rects);
+        }
+
+        const rect = range.getBoundingClientRect();
+        return rect.width > 0 || rect.height > 0 ? [rect] : [];
+    }
+
+    function mergeAdjacentClientRects(rects) {
+        const rowTolerance = 3;
+        const gapTolerance = 2;
+        const normalizedRects = rects
+            .map((rect) => ({
+                left: rect.left,
+                top: rect.top,
+                right: rect.right,
+                bottom: rect.bottom,
+                width: rect.width,
+                height: rect.height
+            }))
+            .sort((left, right) => (
+                Math.abs(left.top - right.top) <= rowTolerance
+                    ? left.left - right.left
+                    : left.top - right.top
+            ));
+
+        const filteredRects = normalizedRects.filter((rect, index, all) => (
+            !all.some((other, otherIndex) => {
+                if (index === otherIndex) return false;
+                return (
+                    rect.left >= other.left - gapTolerance &&
+                    rect.right <= other.right + gapTolerance &&
+                    rect.top >= other.top - rowTolerance &&
+                    rect.bottom <= other.bottom + rowTolerance &&
+                    (
+                        other.width > rect.width + gapTolerance ||
+                        other.height > rect.height + rowTolerance
+                    )
+                );
+            })
+        ));
+
+        const rows = [];
+        filteredRects.forEach((rect) => {
+            const row = rows.find((candidate) => (
+                rect.top <= candidate.bottom + rowTolerance &&
+                rect.bottom >= candidate.top - rowTolerance
+            ));
+
+            if (!row) {
+                rows.push({
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    rects: [rect]
+                });
+                return;
+            }
+
+            row.top = Math.min(row.top, rect.top);
+            row.bottom = Math.max(row.bottom, rect.bottom);
+
+            const previous = row.rects[row.rects.length - 1];
+            if (previous && rect.left <= previous.right + gapTolerance) {
+                previous.right = Math.max(previous.right, rect.right);
+                previous.top = Math.min(previous.top, rect.top);
+                previous.bottom = Math.max(previous.bottom, rect.bottom);
+                previous.width = previous.right - previous.left;
+                previous.height = previous.bottom - previous.top;
+                return;
+            }
+
+            row.rects.push(rect);
+        });
+
+        return rows
+            .sort((left, right) => left.top - right.top)
+            .flatMap((row) => row.rects);
+    }
+
+    function measuredSubstringViewportRect(word, match, labelMatch) {
+        const range = measuredSubstringRange(word, match, labelMatch);
+        if (!range) {
+            return null;
+        }
 
         const rect = range.getBoundingClientRect();
         if (rect.width > 0 || rect.height > 0) {
@@ -1808,16 +2091,125 @@
         };
     }
 
+    function outlineViewportRectsForLabel(word, match, labelMatch) {
+        const wordRect = wordRecordRect(word, false);
+        if (!wordRect || wordRect.width <= 0 || wordRect.height <= 0) {
+            return [];
+        }
+
+        if (labelMatch?.anchor?.type === "substring" || Number(match?.wordCount) === 1) {
+            const measuredRects = measuredSubstringViewportRects(word, match, labelMatch);
+            if (measuredRects.length) {
+                return measuredRects;
+            }
+
+            if (labelMatch?.anchor?.type !== "substring") {
+                return [wordRect];
+            }
+
+            const anchor = proportionalHintAnchorOffset(labelMatch, wordRect);
+            if (anchor.width <= 0) {
+                return [];
+            }
+
+            return [{
+                left: wordRect.left + anchor.left,
+                top: wordRect.top,
+                width: anchor.width,
+                height: wordRect.height
+            }];
+        }
+
+        return [wordRect];
+    }
+
+    function outlineRecordsForMatch(words, startIndex, match, labelMatch) {
+        if (match.wordCount > 1 && labelMatch?.anchor?.type !== "substring") {
+            return words
+                .slice(startIndex, startIndex + match.wordCount)
+                .map((word) => ({
+                    word,
+                    match: null,
+                    labelMatch: null,
+                    rectIndex: 0
+                }));
+        }
+
+        return outlineViewportRectsForLabel(words[startIndex], match, labelMatch)
+            .map((_, rectIndex) => ({
+                word: words[startIndex],
+                match,
+                labelMatch,
+                rectIndex
+            }));
+    }
+
+    function outlineViewportRectForRecord(record) {
+        if (!record?.word) {
+            return null;
+        }
+
+        const rects = outlineViewportRectsForLabel(record.word, record.match, record.labelMatch);
+        return rects[record.rectIndex ?? 0] || null;
+    }
+
+    function appendInlineOutlines(words, startIndex, match, labelMatch) {
+        if (!STATE.settings.showChordableWordOutlines) {
+            return;
+        }
+
+        outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
+            const rect = outlineViewportRectForRecord(record);
+            const wordEl = wordRecordElement(record.word);
+            const wordRect = wordRecordRect(record.word, false);
+            if (
+                !(wordEl instanceof HTMLElement) ||
+                !wordRect ||
+                !rect ||
+                rect.width <= 0 ||
+                rect.height <= 0
+            ) {
+                return;
+            }
+
+            ensureRelativePositionHost(wordEl);
+            const outline = createOutlineElement();
+            if (!positionInlineOutline(outline, wordRect, rect)) {
+                return;
+            }
+            wordEl.appendChild(outline);
+        });
+    }
+
+    function appendOverlayOutlines(root, words, startIndex, match, labelMatch) {
+        if (!STATE.settings.showChordableWordOutlines || !(root instanceof HTMLElement)) {
+            return;
+        }
+
+        outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
+            const outline = createOutlineElement();
+            const nextRecord = {
+                ...record,
+                outline
+            };
+
+            root.appendChild(outline);
+            if (!positionOverlayOutline(nextRecord)) {
+                outline.remove();
+                return;
+            }
+
+            STATE.overlayOutlines.push(nextRecord);
+        });
+    }
+
     function annotateInlineMatch(words, startIndex, match, includeDebugSummary = false) {
         const wordEl = wordRecordElement(words[startIndex]);
         if (!(wordEl instanceof HTMLElement)) {
             return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
         }
 
-        if (getComputedStyle(wordEl).position === "static") {
-            wordEl.dataset.cchOriginalPosition = "static";
-            wordEl.style.position = "relative";
-        }
+        ensureRelativePositionHost(wordEl);
 
         const rect = wordRecordRect(words[startIndex]);
         if (!rect || rect.width <= 0 || rect.height <= 0) {
@@ -1828,7 +2220,11 @@
         wordEl.dataset.cchAnnotated = "true";
 
         matchLabels(match).forEach((labelMatch) => {
-            const label = createHintLabel(labelMatch.entries, match.word);
+            appendInlineOutlines(words, startIndex, match, labelMatch);
+            const label = createHintLabel(
+                labelMatch.entries,
+                matchedOutputTextForLabel(match, labelMatch)
+            );
             const anchor = hintAnchorOffset(words[startIndex], match, labelMatch, rect);
             label.style.left = STATE.settings.hint_position === "center"
                 ? `${anchor.center}px`
@@ -1856,7 +2252,11 @@
         const adapter = currentSiteAdapter();
         const overlayPosition = overlayPositionFromViewportRect(root, rect);
         matchLabels(match).forEach((labelMatch) => {
-            const label = createHintLabel(labelMatch.entries, match.word);
+            appendOverlayOutlines(root, words, startIndex, match, labelMatch);
+            const label = createHintLabel(
+                labelMatch.entries,
+                matchedOutputTextForLabel(match, labelMatch)
+            );
             if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
                 label.classList.add("cch-keybr-overlay-extra-spacing");
             }
@@ -1889,10 +2289,6 @@
 
     function annotateParagraph(paragraph, paragraphIndex, discoveredWords = null, renderMode = "inline") {
         clearAnnotationsWithin(paragraph);
-
-        if (STATE.settings.showDebugOutline) {
-            paragraph.classList.add("cch-debug-parent");
-        }
 
         const words = Array.isArray(discoveredWords) ? discoveredWords : getWordElements(paragraph);
         const includeDebugSummary = STATE.settings.debugLogging;
@@ -2051,7 +2447,13 @@
         STATE.scheduledForce = force;
 
         window.requestAnimationFrame(() => {
-            window.setTimeout(() => runAnnotationPass(STATE.scheduledForce), 40);
+            const delayMs = adapterDelayMs("annotationScheduleDelayMs", 40, STATE.scheduledForce);
+            if (delayMs <= 0) {
+                runAnnotationPass(STATE.scheduledForce);
+                return;
+            }
+
+            window.setTimeout(() => runAnnotationPass(STATE.scheduledForce), delayMs);
         });
     }
 
@@ -2078,6 +2480,7 @@
 
     function handlePotentialPromptChange(reason) {
         window.clearTimeout(STATE.promptRefreshTimer);
+        const delayMs = adapterDelayMs("promptRefreshDebounceMs", 140, reason);
         STATE.promptRefreshTimer = window.setTimeout(() => {
             const nextSignature = buildPromptSignature();
 
@@ -2243,9 +2646,10 @@
             if (!sawChildListChange) return;
 
             window.clearTimeout(STATE.containerRebindTimer);
+            const delayMs = adapterDelayMs("containerRebindDelayMs", 50);
             STATE.containerRebindTimer = window.setTimeout(() => {
                 ensurePromptObserverTarget();
-            }, 50);
+            }, delayMs);
         });
 
         STATE.containerObserver.observe(document.documentElement, {

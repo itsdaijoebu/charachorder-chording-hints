@@ -21,6 +21,7 @@
         popupHintPosition: document.getElementById("popupHintPosition"),
         popupHintDisplay: document.getElementById("popupHintDisplay"),
         popupEnableSubstringHints: document.getElementById("popupEnableSubstringHints"),
+        popupShowChordableWordOutlines: document.getElementById("popupShowChordableWordOutlines"),
         popupMinimumWordLength: document.getElementById("popupMinimumWordLength"),
         popupHintCharacterOrderMode: document.getElementById("popupHintCharacterOrderMode"),
         popupLightPreviewHint: document.getElementById("popupLightPreviewHint"),
@@ -114,6 +115,8 @@
         els.popupLightPreviewHint.classList.toggle("popupPreviewAlignLeft", alignClass === "popupPreviewAlignLeft");
         els.popupLightPreviewHint.classList.toggle("popupPreviewAlignCenter", alignClass === "popupPreviewAlignCenter");
         els.popupLightPreviewHint.classList.toggle("popupPreviewHintHoverReveal", revealOnHover);
+        els.popupLightPreviewWord.classList.toggle("popupPreviewWordOutlined", settings.showChordableWordOutlines);
+        els.popupLightPreviewWord.style.setProperty("--cch-preview-word-outline-color", settings.hint_box_light_mode_color);
 
         els.popupDarkPreviewHint.style.background = hexToRgba(
             settings.hint_box_dark_mode_color,
@@ -125,6 +128,8 @@
         els.popupDarkPreviewHint.classList.toggle("popupPreviewAlignLeft", alignClass === "popupPreviewAlignLeft");
         els.popupDarkPreviewHint.classList.toggle("popupPreviewAlignCenter", alignClass === "popupPreviewAlignCenter");
         els.popupDarkPreviewHint.classList.toggle("popupPreviewHintHoverReveal", revealOnHover);
+        els.popupDarkPreviewWord.classList.toggle("popupPreviewWordOutlined", settings.showChordableWordOutlines);
+        els.popupDarkPreviewWord.style.setProperty("--cch-preview-word-outline-color", settings.hint_box_dark_mode_color);
     }
 
     function togglePreviewHintDisplay(label) {
@@ -242,6 +247,7 @@
         els.popupHintPosition.value = settings.hint_position || "left";
         els.popupHintDisplay.value = settings.hint_display || "always";
         els.popupEnableSubstringHints.checked = settings.enableSubstringHints;
+        els.popupShowChordableWordOutlines.checked = settings.showChordableWordOutlines;
         els.popupMinimumWordLength.value = settings.minimumWordLength;
         els.popupHintCharacterOrderMode.value = settings.hintCharacterOrderMode;
         syncHintTextSizeFieldBehavior();
@@ -273,6 +279,7 @@
             hint_position: els.popupHintPosition.value === "center" ? "center" : "left",
             hint_display: els.popupHintDisplay.value === "hover" ? "hover" : "always",
             enableSubstringHints: els.popupEnableSubstringHints.checked,
+            showChordableWordOutlines: els.popupShowChordableWordOutlines.checked,
             minimumWordLength: CCHShared.normalizeMinimumWordLength
                 ? CCHShared.normalizeMinimumWordLength(els.popupMinimumWordLength.value)
                 : Math.max(1, Math.floor(Number(els.popupMinimumWordLength.value)) || defaults.minimumWordLength),
@@ -415,7 +422,8 @@
         els.popupHintTextFontSizeValue,
         els.popupHintPosition,
         els.popupHintDisplay,
-        els.popupHintCharacterOrderMode
+        els.popupHintCharacterOrderMode,
+        els.popupShowChordableWordOutlines
     ].forEach((input) => {
         input.addEventListener("input", updateAppearancePreview);
         input.addEventListener("change", updateAppearancePreview);

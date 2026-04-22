@@ -190,8 +190,8 @@ button.secondary:hover {
     z-index: 20;
 }
 
-.tooltipable:hover::after,
-.tooltipable:focus-within::after {
+/*.tooltipable:focus-within::after,*/
+.tooltipable:hover::after {
     opacity: 1;
     transform: translateY(0);
 }
@@ -296,6 +296,9 @@ button.secondary:hover {
 }
 
 .popupPreviewWordText {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
     font-weight: 600;
 }
 
@@ -310,6 +313,13 @@ button.secondary:hover {
 .popupCheck input {
     width: auto;
     margin: 0;
+}
+
+.popupBehaviorChecks {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: nowrap;
 }
 
 .inlineFieldPair {
@@ -389,12 +399,20 @@ button.secondary:hover {
     position: relative;
     display: inline-flex;
     align-items: center;
-    /*padding: 0.08em 0.18em;*/
-    border: 2px dotted transparent;
     border-radius: 6px;
     line-height: 1em;
 
     transform: translateY(0.5em);
+}
+
+.popupPreviewOutlineSegment {
+    outline: 2px dotted transparent;
+    outline-offset: 2px;
+    border-radius: 0.2em;
+}
+
+.popupPreviewWordOutlined .popupPreviewOutlineSegment {
+    outline-color: var(--cch-preview-word-outline-color, transparent);
 }
 
 .popupPreviewAlignLeft {

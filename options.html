@@ -188,7 +188,7 @@
             <div class="previewCanvas">
               <div id="hintPreviewWordDark" class="previewWord">
                 <div id="hintPreviewDark" class="previewHint">dark</div>
-                <span class="previewLabel">Dark</span>
+                <span class="previewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
               </div>
             </div>
           </div>
@@ -196,7 +196,7 @@
             <div class="previewCanvas">
               <div id="hintPreviewWordLight" class="previewWord">
                 <div id="hintPreviewLight" class="previewHint">light</div>
-                <span class="previewLabel">Light</span>
+                <span class="previewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
               </div>
             </div>
           </div>
@@ -218,7 +218,7 @@
         </label>
         <label class="fieldLabel" for="hintCharacterOrderMode">
           <span class="labelWithTooltip tooltipable" data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
-            <span>Chord display order</span>
+            <span>Chord input display order</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
           <select id="hintCharacterOrderMode">
@@ -236,12 +236,9 @@
 
         <label class="check" for="enabled"><input id="enabled" type="checkbox"><span>Enable hints</span></label>
         <label class="check tooltipable" for="enableSubstringHints" data-tooltip="Enabled: When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater' in your dictionary&#10;&#10;May affect performance, so disable if causing slowdowns."><input id="enableSubstringHints" type="checkbox"><span>Enable Substring Hints</span><span class="tooltipIcon" aria-hidden="true"></span></label>
+        <label class="check tooltipable" for="showChordableWordOutlines" data-tooltip="Shows outlines around chordable output. May impact performance, so disable if causing slowdowns"><input id="showChordableWordOutlines" type="checkbox"><span>Show outlines on chordable words</span><span class="tooltipIcon" aria-hidden="true"></span></label>
         <label class="check" for="includeArpeggiates"><input id="includeArpeggiates" type="checkbox"><span>Include arpeggiates</span></label>
         <label class="check" for="includeModifierStyle"><input id="includeModifierStyle" type="checkbox"><span>Include modifier-style outputs</span></label>
-        
-        
-
-        <label class="check" for="showDebugOutline"><input id="showDebugOutline" type="checkbox"><span>Show debug outlines</span></label>
         <label class="check" for="debugLogging"><input id="debugLogging" type="checkbox"><span>Enable debug logging</span></label>
                 <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions" type="checkbox"><span>Show extended special-token descriptions</span></label>
       </div>

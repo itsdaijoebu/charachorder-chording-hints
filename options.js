@@ -43,9 +43,9 @@
         includeArpeggiates: document.getElementById("includeArpeggiates"),
         includeModifierStyle: document.getElementById("includeModifierStyle"),
         enableSubstringHints: document.getElementById("enableSubstringHints"),
+        showChordableWordOutlines: document.getElementById("showChordableWordOutlines"),
         minimumWordLength: document.getElementById("minimumWordLength"),
         hintCharacterOrderMode: document.getElementById("hintCharacterOrderMode"),
-        showDebugOutline: document.getElementById("showDebugOutline"),
         debugLogging: document.getElementById("debugLogging"),
         showExtendedSpecialDescriptions: document.getElementById("showExtendedSpecialDescriptions"),
         keybrHintLayout: document.getElementById("keybrHintLayout"),
@@ -981,6 +981,7 @@
             includeArpeggiates: els.includeArpeggiates.checked,
             includeModifierStyle: els.includeModifierStyle.checked,
             enableSubstringHints: els.enableSubstringHints.checked,
+            showChordableWordOutlines: els.showChordableWordOutlines.checked,
             minimumWordLength: CCHShared.normalizeMinimumWordLength
                 ? CCHShared.normalizeMinimumWordLength(els.minimumWordLength.value)
                 : Math.max(1, Math.floor(Number(els.minimumWordLength.value)) || defaults.minimumWordLength),
@@ -989,7 +990,6 @@
                 : (els.hintCharacterOrderMode.value === "charachorder-default"
                     ? "charachorder-default"
                     : "best-match"),
-            showDebugOutline: els.showDebugOutline.checked,
             debugLogging: els.debugLogging.checked,
             showExtendedSpecialDescriptions: els.showExtendedSpecialDescriptions.checked,
 
@@ -1070,9 +1070,9 @@
         els.includeArpeggiates.checked = settings.includeArpeggiates;
         els.includeModifierStyle.checked = settings.includeModifierStyle;
         els.enableSubstringHints.checked = settings.enableSubstringHints;
+        els.showChordableWordOutlines.checked = settings.showChordableWordOutlines;
         els.minimumWordLength.value = settings.minimumWordLength;
         els.hintCharacterOrderMode.value = settings.hintCharacterOrderMode;
-        els.showDebugOutline.checked = settings.showDebugOutline;
         els.debugLogging.checked = settings.debugLogging;
         els.showExtendedSpecialDescriptions.checked = settings.showExtendedSpecialDescriptions;
 
@@ -1188,6 +1188,8 @@
         els.hintPreviewDark.classList.toggle("previewAlignLeft", alignClass === "previewAlignLeft");
         els.hintPreviewDark.classList.toggle("previewAlignCenter", alignClass === "previewAlignCenter");
         els.hintPreviewDark.classList.toggle("previewHintHoverReveal", revealOnHover);
+        els.hintPreviewWordDark.classList.toggle("previewWordOutlined", settings.showChordableWordOutlines);
+        els.hintPreviewWordDark.style.setProperty("--cch-preview-word-outline-color", settings.hint_box_dark_mode_color);
 
         els.hintPreviewLight.style.background = hexToRgba(settings.hint_box_light_mode_color, settings.hint_box_light_mode_opacity);
         els.hintPreviewLight.style.color = settings.hint_text_light_mode_color;
@@ -1196,6 +1198,8 @@
         els.hintPreviewLight.classList.toggle("previewAlignLeft", alignClass === "previewAlignLeft");
         els.hintPreviewLight.classList.toggle("previewAlignCenter", alignClass === "previewAlignCenter");
         els.hintPreviewLight.classList.toggle("previewHintHoverReveal", revealOnHover);
+        els.hintPreviewWordLight.classList.toggle("previewWordOutlined", settings.showChordableWordOutlines);
+        els.hintPreviewWordLight.style.setProperty("--cch-preview-word-outline-color", settings.hint_box_light_mode_color);
     }
 
     function togglePreviewHintDisplay(label) {
@@ -2377,7 +2381,8 @@
         els.hintTextFontSizeValue,
         els.hintPosition,
         els.hintDisplay,
-        els.hintCharacterOrderMode
+        els.hintCharacterOrderMode,
+        els.showChordableWordOutlines
     ].forEach((el) => {
         el.addEventListener("input", () => updateAppearancePreview(currentSettingsFromForm()));
         el.addEventListener("change", () => updateAppearancePreview(currentSettingsFromForm()));
