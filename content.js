@@ -25,7 +25,10 @@
         overlayResizeObserver: null,
         substringLookup: null,
         substringMatchCache: new Map(),
+        exactEntrySelectionCache: new Map(),
         annotationMeasurementCache: null,
+        deferredParagraphAnnotationTimer: null,
+        annotationPassToken: 0,
         lastLocationHref: location.href
     };
 
@@ -36,6 +39,7 @@
             refreshOnContainerRebind: true,
             premeasureInlineGeometry: true,
             cacheInlineWordRects: true,
+            deferOffscreenParagraphs: true,
             matchesLocation() {
                 return (
                     location.hostname === "entertrained.app" &&
@@ -292,6 +296,20 @@
         }
     }
 
+    function shouldLogEntertrainedOptimization() {
+        return STATE.settings.debugLogging && currentSiteAdapter()?.key === "entertrained";
+    }
+
+    function logEntertrainedOptimization(label, payload) {
+        if (!shouldLogEntertrainedOptimization()) return;
+
+        try {
+            log(`[cch-entr-opt] ${label} ${JSON.stringify(payload)}`);
+        } catch (error) {
+            log(`[cch-entr-opt] ${label} <unserializable>`);
+        }
+    }
+
     function visibleDebugText(text) {
         return String(text || "")
             .replace(/\uE000/g, "<E000>")
@@ -471,6 +489,13 @@
         return typeof rawValue === "boolean" ? rawValue : fallback;
     }
 
+    function cancelDeferredParagraphAnnotation() {
+        if (STATE.deferredParagraphAnnotationTimer != null) {
+            window.clearTimeout(STATE.deferredParagraphAnnotationTimer);
+            STATE.deferredParagraphAnnotationTimer = null;
+        }
+    }
+
     function adapterRenderMode(adapter = currentSiteAdapter()) {
         if (!adapter) return "inline";
         return typeof adapter.renderMode === "function"
@@ -489,6 +514,15 @@
 
         const rect = el.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
+    }
+
+    function rectIntersectsViewport(rect) {
+        return (
+            rect.right > 0 &&
+            rect.left < window.innerWidth &&
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight
+        );
     }
 
     function rectsIntersect(a, b) {
@@ -809,8 +843,13 @@
         return wordTextFromElement(wordRecordElement(word));
     }
 
+    function wordRecordNormalizedText(word) {
+        if (typeof word?.normalized === "string") return word.normalized;
+        return CCHShared.normalizeTokenForLookup(wordRecordText(word));
+    }
+
     function wordRecordHasLookupText(word) {
-        return Boolean(CCHShared.normalizeTokenForLookup(wordRecordText(word)));
+        return Boolean(wordRecordNormalizedText(word));
     }
 
     function wordRecordRect(word, useCachedRect = true) {
@@ -837,11 +876,15 @@
     }
 
     function createWordRecords(words, includeRects = false) {
-        return words.map((el) => ({
-            el,
-            text: wordTextFromElement(el),
-            rect: includeRects ? el.getBoundingClientRect() : null
-        }));
+        return words.map((el) => {
+            const text = wordTextFromElement(el);
+            return {
+                el,
+                text,
+                normalized: CCHShared.normalizeTokenForLookup(text),
+                rect: includeRects ? el.getBoundingClientRect() : null
+            };
+        });
     }
 
     function buildPromptSignature(paragraphs = null, wordLists = null) {
@@ -1297,6 +1340,30 @@
         );
         STATE.substringLookup = buildSubstringLookup();
         STATE.substringMatchCache = new Map();
+        STATE.exactEntrySelectionCache = new Map();
+    }
+
+    function exactEntrySelectionCacheKey(normalized) {
+        return JSON.stringify({
+            normalized: String(normalized || ""),
+            selectionMode: STATE.settings.selectionMode,
+            includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
+            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle)
+        });
+    }
+
+    function chooseEntriesForNormalizedOutput(normalized) {
+        const key = exactEntrySelectionCacheKey(normalized);
+        if (STATE.exactEntrySelectionCache.has(key)) {
+            return STATE.exactEntrySelectionCache.get(key);
+        }
+
+        const refs = STATE.dictionary?.byNormalizedOutput?.[normalized];
+        const chosen = refs?.length
+            ? CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings)
+            : null;
+        STATE.exactEntrySelectionCache.set(key, chosen);
+        return chosen;
     }
 
     function minimumWordLength() {
@@ -1583,18 +1650,18 @@
             }
 
             const rawText = phraseTexts[wordCount];
-            const normalized = CCHShared.normalizeTokenForLookup(rawText);
+            const normalized = wordCount === 1
+                ? wordRecordNormalizedText(words[startIndex])
+                : CCHShared.normalizeTokenForLookup(rawText);
 
             if (!normalized || !phraseMeetsMinimumLength(rawText)) {
                 continue;
             }
 
-            const refs = STATE.dictionary?.byNormalizedOutput?.[normalized];
-            if (!refs?.length) {
+            const chosen = chooseEntriesForNormalizedOutput(normalized);
+            if (!chosen) {
                 continue;
             }
-
-            const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
             if (!chosen.length) {
                 return {
                     matched: false,
@@ -1616,7 +1683,7 @@
         }
 
         const rawText = phraseTexts[1] || "";
-        const normalized = CCHShared.normalizeTokenForLookup(rawText);
+        const normalized = wordRecordNormalizedText(words[startIndex]);
 
         if (!normalized) {
             return { matched: false, reason: "empty-normalized", word: rawText };
@@ -2365,6 +2432,7 @@
 
         const words = Array.isArray(discoveredWords) ? discoveredWords : getWordElements(paragraph);
         const includeDebugSummary = STATE.settings.debugLogging;
+        const shouldLogTiming = shouldLogEntertrainedOptimization();
         const shouldPremeasureInlineGeometry =
             renderMode === "inline" &&
             adapterFlag("premeasureInlineGeometry");
@@ -2373,6 +2441,10 @@
         const matchPlans = [];
         let matchedCount = 0;
         let unmatchedCount = 0;
+        const startedAt = shouldLogTiming ? performance.now() : 0;
+        let matchingCompletedAt = startedAt;
+        let premeasureCompletedAt = startedAt;
+        let renderCompletedAt = startedAt;
 
         for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
             const result = findMatchFromWords(words, wordIndex);
@@ -2387,6 +2459,11 @@
                 }
             }
         }
+        if (shouldLogTiming) {
+            matchingCompletedAt = performance.now();
+            premeasureCompletedAt = matchingCompletedAt;
+            renderCompletedAt = matchingCompletedAt;
+        }
 
         if (shouldPremeasureInlineGeometry) {
             matchPlans.forEach((plan) => {
@@ -2396,6 +2473,10 @@
                     measuredSubstringGeometry(word, plan.result, labelMatch);
                 });
             });
+            if (shouldLogTiming) {
+                premeasureCompletedAt = performance.now();
+                renderCompletedAt = premeasureCompletedAt;
+            }
         }
 
         matchPlans.forEach((plan) => {
@@ -2410,6 +2491,9 @@
                 matches.push(matchSummary);
             }
         });
+        if (shouldLogTiming) {
+            renderCompletedAt = performance.now();
+        }
 
         const summary = {
             site: currentSiteAdapter()?.key || "unknown",
@@ -2418,6 +2502,24 @@
             matchedCount,
             unmatchedCount
         };
+
+        if (shouldLogTiming) {
+            summary.timings = {
+                matchingMs: Number((matchingCompletedAt - startedAt).toFixed(2)),
+                premeasureMs: Number((premeasureCompletedAt - matchingCompletedAt).toFixed(2)),
+                renderMs: Number((renderCompletedAt - premeasureCompletedAt).toFixed(2)),
+                totalMs: Number((renderCompletedAt - startedAt).toFixed(2))
+            };
+
+            logEntertrainedOptimization("paragraph", {
+                paragraphIndex,
+                wordCount: words.length,
+                matchedCount,
+                unmatchedCount,
+                matchPlanCount: matchPlans.length,
+                timings: summary.timings
+            });
+        }
 
         if (includeDebugSummary) {
             summary.activeWordCount = words.filter((word) => wordRecordHasClass(word, "active")).length;
@@ -2442,10 +2544,22 @@
         return summary;
     }
 
+    function annotateParagraphEntries(entries, renderMode) {
+        return entries.map((entry) =>
+            annotateParagraph(entry.paragraph, entry.index, entry.words, renderMode)
+        );
+    }
+
     function runAnnotationPass(force = false) {
         STATE.scheduled = false;
         STATE.scheduledForce = false;
+        cancelDeferredParagraphAnnotation();
+        const passToken = ++STATE.annotationPassToken;
         STATE.annotationMeasurementCache = new WeakMap();
+        const shouldLogTiming = shouldLogEntertrainedOptimization();
+        const startedAt = shouldLogTiming ? performance.now() : 0;
+        let discoveryCompletedAt = startedAt;
+        let annotationCompletedAt = startedAt;
 
         if (!STATE.settings.enabled || !STATE.dictionary) {
             STATE.trackedParagraphs.forEach((paragraph) => clearAnnotationsWithin(paragraph, true));
@@ -2488,6 +2602,10 @@
         const wordLists = paragraphs.map((paragraph) => getWordElements(paragraph));
         const wordRecordLists = wordLists.map((words) => createWordRecords(words, shouldCacheWordRects));
         const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordRecordLists);
+        if (shouldLogTiming) {
+            discoveryCompletedAt = performance.now();
+            annotationCompletedAt = discoveryCompletedAt;
+        }
 
         if (adapter.key === "keybr") {
             paragraphs.forEach((paragraph, index) => {
@@ -2517,9 +2635,41 @@
             return;
         }
 
-        const summaries = paragraphs.map((paragraph, index) =>
-            annotateParagraph(paragraph, index, wordRecordLists[index], renderMode)
-        );
+        const paragraphEntries = paragraphs.map((paragraph, index) => ({
+            paragraph,
+            index,
+            words: wordRecordLists[index]
+        }));
+        const shouldDeferOffscreenParagraphs =
+            renderMode === "inline" &&
+            adapterFlag("deferOffscreenParagraphs");
+        let immediateEntries = paragraphEntries;
+        let deferredEntries = [];
+
+        if (shouldDeferOffscreenParagraphs) {
+            immediateEntries = [];
+            deferredEntries = [];
+
+            paragraphEntries.forEach((entry) => {
+                const rect = entry.paragraph.getBoundingClientRect();
+                if (rectIntersectsViewport(rect)) {
+                    immediateEntries.push(entry);
+                    return;
+                }
+
+                deferredEntries.push(entry);
+            });
+
+            if (!immediateEntries.length) {
+                immediateEntries = paragraphEntries;
+                deferredEntries = [];
+            }
+        }
+
+        const summaries = annotateParagraphEntries(immediateEntries, renderMode);
+        if (shouldLogTiming) {
+            annotationCompletedAt = performance.now();
+        }
         const totalWords = summaries.reduce((sum, item) => sum + item.wordCount, 0);
         const totalMatches = summaries.reduce((sum, item) => sum + item.matchedCount, 0);
 
@@ -2531,13 +2681,82 @@
 
         log("Annotation pass complete", {
             site: adapter.key,
-            paragraphCount: paragraphs.length,
+            paragraphCount: immediateEntries.length,
             totalWords,
             totalMatches,
             entryCount: STATE.dictionary.entryCount,
-            forced: force
+            forced: force,
+            deferredParagraphCount: deferredEntries.length
         });
+        if (shouldLogTiming) {
+            const aggregatedTimings = summaries.reduce((accumulator, summary) => {
+                const timings = summary?.timings;
+                if (!timings) {
+                    return accumulator;
+                }
+
+                accumulator.matchingMs += Number(timings.matchingMs) || 0;
+                accumulator.premeasureMs += Number(timings.premeasureMs) || 0;
+                accumulator.renderMs += Number(timings.renderMs) || 0;
+                accumulator.paragraphTotalMs += Number(timings.totalMs) || 0;
+                return accumulator;
+            }, {
+                matchingMs: 0,
+                premeasureMs: 0,
+                renderMs: 0,
+                paragraphTotalMs: 0
+            });
+
+            logEntertrainedOptimization("pass", {
+                forced: force,
+                paragraphCount: immediateEntries.length,
+                deferredParagraphCount: deferredEntries.length,
+                totalWords,
+                totalMatches,
+                timings: {
+                    discoveryMs: Number((discoveryCompletedAt - startedAt).toFixed(2)),
+                    annotationMs: Number((annotationCompletedAt - discoveryCompletedAt).toFixed(2)),
+                    totalMs: Number((annotationCompletedAt - startedAt).toFixed(2)),
+                    paragraphMatchingMs: Number(aggregatedTimings.matchingMs.toFixed(2)),
+                    paragraphPremeasureMs: Number(aggregatedTimings.premeasureMs.toFixed(2)),
+                    paragraphRenderMs: Number(aggregatedTimings.renderMs.toFixed(2)),
+                    paragraphTotalMs: Number(aggregatedTimings.paragraphTotalMs.toFixed(2))
+                }
+            });
+        }
         STATE.annotationMeasurementCache = null;
+
+        if (deferredEntries.length) {
+            STATE.deferredParagraphAnnotationTimer = window.setTimeout(() => {
+                STATE.deferredParagraphAnnotationTimer = null;
+
+                if (
+                    STATE.annotationPassToken !== passToken ||
+                    STATE.lastPromptSignature !== nextPromptSignature
+                ) {
+                    return;
+                }
+
+                STATE.annotationMeasurementCache = new WeakMap();
+                const deferredSummaries = annotateParagraphEntries(
+                    deferredEntries.filter((entry) => entry.paragraph.isConnected),
+                    renderMode
+                );
+                STATE.annotationMeasurementCache = null;
+
+                const deferredWordCount = deferredSummaries.reduce((sum, item) => sum + item.wordCount, 0);
+                const deferredMatchCount = deferredSummaries.reduce((sum, item) => sum + item.matchedCount, 0);
+
+                log("Deferred paragraph annotation complete", {
+                    site: adapter.key,
+                    paragraphCount: deferredSummaries.length,
+                    totalWords: deferredWordCount,
+                    totalMatches: deferredMatchCount,
+                    entryCount: STATE.dictionary.entryCount,
+                    forced: force
+                });
+            }, 0);
+        }
     }
 
     function scheduleAnnotation(force = false) {
@@ -2849,6 +3068,15 @@
             "load",
             () => {
                 ensurePromptObserverTarget();
+                if (currentSiteAdapter()?.key === "entertrained") {
+                    const nextSignature = buildPromptSignature();
+                    if (nextSignature && nextSignature === STATE.lastPromptSignature) {
+                        logEntertrainedOptimization("load-skip", {
+                            reason: "signature-unchanged"
+                        });
+                        return;
+                    }
+                }
                 scheduleAnnotation(true);
             },
             { once: true }
