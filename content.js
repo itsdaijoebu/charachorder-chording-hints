@@ -1,7 +1,12 @@
 (() => {
-    const FIRSTPAINT_LOG_TAG = "[cch-firstpaint-test]";
-    const ANNOTATION_CHUNK_MAX_STARTS = 50;
-    const ANNOTATION_CHUNK_BUDGET_MS = 6;
+    const ANNOTATION_CHUNK_INITIAL_IMMEDIATE_COUNT = 2;
+    const ANNOTATION_CHUNK_INITIAL_IMMEDIATE_MAX_STARTS = 50;
+    const ANNOTATION_CHUNK_INITIAL_IMMEDIATE_BUDGET_MS = 6;
+    const ANNOTATION_CHUNK_STEADY_IMMEDIATE_MAX_STARTS = 100;
+    const ANNOTATION_CHUNK_STEADY_IMMEDIATE_BUDGET_MS = 12;
+    const ANNOTATION_CHUNK_DEFERRED_MAX_STARTS = 120;
+    const ANNOTATION_CHUNK_DEFERRED_BUDGET_MS = 14;
+    const HINT_LABEL_TEMPLATE_CACHE_LIMIT = 512;
 
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
@@ -30,6 +35,8 @@
         substringLookup: null,
         substringMatchCache: new Map(),
         exactEntrySelectionCache: new Map(),
+        hintLabelTemplateCache: new Map(),
+        hintLabelClickDelegationInstalled: false,
         annotationMeasurementCache: null,
         annotationWorkTimer: null,
         annotationPassToken: 0,
@@ -290,14 +297,6 @@
         console.log("[CCH]", ...args);
     }
 
-    function logTagged(tag, label, payload) {
-        log(`${tag} ${label}`, payload);
-    }
-
-    function logFirstPaint(label, payload) {
-        logTagged(FIRSTPAINT_LOG_TAG, label, payload);
-    }
-
     function logKeybrCompact(label, payload) {
         if (!STATE.settings.debugLogging) return;
 
@@ -395,6 +394,11 @@
                 };
             })
         };
+    }
+
+    function resetHintLabelTemplateCache(reason = "unspecified") {
+        STATE.hintLabelTemplateCache.clear();
+        void reason;
     }
 
     function keybrDebugNodeSummary(node) {
@@ -930,6 +934,19 @@
         return el instanceof HTMLElement && el.classList.contains(className);
     }
 
+    function wordRecordIsWrappedInline(word) {
+        if (word && typeof word === "object" && typeof word.wrappedInline === "boolean") {
+            return word.wrappedInline;
+        }
+
+        const el = wordRecordElement(word);
+        const wrappedInline = el instanceof HTMLElement && el.getClientRects().length > 1;
+        if (word && typeof word === "object") {
+            word.wrappedInline = wrappedInline;
+        }
+        return wrappedInline;
+    }
+
     function hasActiveAnnotationMeasurementCache() {
         return STATE.annotationMeasurementCache instanceof WeakMap;
     }
@@ -941,7 +958,8 @@
                 el,
                 text,
                 normalized: CCHShared.normalizeTokenForLookup(text),
-                rect: includeRects ? el.getBoundingClientRect() : null
+                rect: includeRects ? el.getBoundingClientRect() : null,
+                wrappedInline: null
             };
         });
     }
@@ -1316,6 +1334,44 @@
         }
 
         return fragment;
+    }
+
+    function hintLabelTemplateKey(entries, outputText) {
+        return JSON.stringify({
+            outputText: STATE.settings.hintCharacterOrderMode === "best-match"
+                ? String(outputText || "")
+                : "",
+            entries: (Array.isArray(entries) ? entries : []).map((entry) => String(entry?.rawInput || ""))
+        });
+    }
+
+    function evictOldestHintLabelTemplateIfNeeded() {
+        if (STATE.hintLabelTemplateCache.size < HINT_LABEL_TEMPLATE_CACHE_LIMIT) {
+            return;
+        }
+
+        const oldestKey = STATE.hintLabelTemplateCache.keys().next().value;
+        if (typeof oldestKey === "undefined") {
+            return;
+        }
+
+        STATE.hintLabelTemplateCache.delete(oldestKey);
+    }
+
+    function cloneHintRows(entries, outputText) {
+        const cacheKey = hintLabelTemplateKey(entries, outputText);
+        const cachedTemplate = STATE.hintLabelTemplateCache.get(cacheKey);
+        if (cachedTemplate instanceof HTMLTemplateElement) {
+            STATE.hintLabelTemplateCache.delete(cacheKey);
+            STATE.hintLabelTemplateCache.set(cacheKey, cachedTemplate);
+            return cachedTemplate.content.cloneNode(true);
+        }
+
+        const template = document.createElement("template");
+        template.content.appendChild(renderHintRows(entries, outputText));
+        evictOldestHintLabelTemplateIfNeeded();
+        STATE.hintLabelTemplateCache.set(cacheKey, template);
+        return template.content.cloneNode(true);
     }
 
     function hintTextForLogs(entries) {
@@ -1723,6 +1779,26 @@
         }
     }
 
+    function installHintLabelClickDelegation() {
+        if (STATE.hintLabelClickDelegationInstalled) {
+            return;
+        }
+
+        document.addEventListener("click", (event) => {
+            const target = event.target instanceof Element
+                ? event.target.closest(".cch-hint-label")
+                : null;
+            if (!(target instanceof HTMLElement)) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            toggleHintDisplay(target);
+        }, true);
+        STATE.hintLabelClickDelegationInstalled = true;
+    }
+
     function createHintLabel(entries, outputText) {
         const label = document.createElement("span");
         label.className = "cch-hint-label";
@@ -1731,12 +1807,7 @@
         if (entries.length > 1) {
             label.classList.add("cch-multiple");
         }
-        label.appendChild(renderHintRows(entries, outputText));
-        label.addEventListener("click", (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            toggleHintDisplay(label);
-        });
+        label.appendChild(cloneHintRows(entries, outputText));
         return label;
     }
 
@@ -2187,10 +2258,46 @@
         return range;
     }
 
+    function measuredGeometryDecision(word, match, labelMatch) {
+        if (labelMatch?.anchor?.type === "substring") {
+            return {
+                required: true,
+                reason: "substringMeasured"
+            };
+        }
+
+        if (Number(match?.wordCount) !== 1) {
+            return {
+                required: false,
+                reason: "multiWordWordRectBypass"
+            };
+        }
+
+        if (currentSiteAdapter()?.key === "entertrained" && wordRecordIsWrappedInline(word)) {
+            return {
+                required: true,
+                reason: "wrappedWordMeasured"
+            };
+        }
+
+        return {
+            required: false,
+            reason: "wholeWordWordRectBypass"
+        };
+    }
+
     function measuredSubstringGeometry(word, match, labelMatch) {
         const cached = cachedMeasurement(word, match, labelMatch);
         if (cached && cached.value !== undefined) {
             return cached.value;
+        }
+
+        const geometryDecision = measuredGeometryDecision(word, match, labelMatch);
+        if (!geometryDecision.required) {
+            if (cached) {
+                cached.bucket.set(cached.key, null);
+            }
+            return null;
         }
 
         let geometry = entertrainedMeasuredGeometry(word, match, labelMatch);
@@ -2646,18 +2753,34 @@
 
     function buildParagraphWordBatch(entry, deferOffscreenWords) {
         const words = Array.isArray(entry?.words) ? entry.words : [];
+        const allIndexes = allWordIndexes(words);
         if (!deferOffscreenWords) {
             return {
                 ...entry,
-                immediateWordIndexes: allWordIndexes(words),
-                deferredWordIndexes: []
+                immediateWordIndexes: allIndexes,
+                deferredWordIndexes: [],
+                wordRectProbeCount: 0
+            };
+        }
+
+        const paragraphInViewport = typeof entry?.paragraphInViewport === "boolean"
+            ? entry.paragraphInViewport
+            : rectIntersectsViewport(entry?.paragraphRect || {});
+        if (!paragraphInViewport) {
+            return {
+                ...entry,
+                immediateWordIndexes: [],
+                deferredWordIndexes: allIndexes,
+                wordRectProbeCount: 0
             };
         }
 
         const immediateWordIndexes = [];
         const deferredWordIndexes = [];
+        let wordRectProbeCount = 0;
 
         words.forEach((word, wordIndex) => {
+            wordRectProbeCount += 1;
             const rect = wordRecordRect(word);
             if (rect && rectIntersectsViewport(rect)) {
                 immediateWordIndexes.push(wordIndex);
@@ -2670,7 +2793,8 @@
         return {
             ...entry,
             immediateWordIndexes,
-            deferredWordIndexes
+            deferredWordIndexes,
+            wordRectProbeCount
         };
     }
 
@@ -2816,31 +2940,56 @@
             .sort((a, b) => a - b);
     }
 
-    function ensureChunkedParagraphPlanState(entry, includeDebugSummary = false) {
+    function defaultAnnotationChunkPolicy() {
+        return {
+            stage: "default",
+            budgetMs: ANNOTATION_CHUNK_INITIAL_IMMEDIATE_BUDGET_MS,
+            maxStarts: ANNOTATION_CHUNK_INITIAL_IMMEDIATE_MAX_STARTS
+        };
+    }
+
+    function annotationChunkPolicyForQueue(queueState) {
+        if (queueState?.phaseName === "deferred") {
+            return {
+                stage: "deferred-fill",
+                budgetMs: ANNOTATION_CHUNK_DEFERRED_BUDGET_MS,
+                maxStarts: ANNOTATION_CHUNK_DEFERRED_MAX_STARTS
+            };
+        }
+
+        if ((queueState?.processedChunkCount || 0) < ANNOTATION_CHUNK_INITIAL_IMMEDIATE_COUNT) {
+            return {
+                stage: "first-paint",
+                budgetMs: ANNOTATION_CHUNK_INITIAL_IMMEDIATE_BUDGET_MS,
+                maxStarts: ANNOTATION_CHUNK_INITIAL_IMMEDIATE_MAX_STARTS
+            };
+        }
+
+        return {
+            stage: "immediate-fill",
+            budgetMs: ANNOTATION_CHUNK_STEADY_IMMEDIATE_BUDGET_MS,
+            maxStarts: ANNOTATION_CHUNK_STEADY_IMMEDIATE_MAX_STARTS
+        };
+    }
+
+    function ensureChunkedParagraphPlanState(entry) {
         if (entry?.chunkedPlanState) {
-            if (includeDebugSummary && !Array.isArray(entry.chunkedPlanState.misses)) {
-                entry.chunkedPlanState.misses = [];
-            }
             return entry.chunkedPlanState;
         }
 
         const chunkedPlanState = {
             nextWordIndex: 0,
             plannedThroughWordIndex: -1,
-            matchedCount: 0,
-            unmatchedCount: 0,
-            planningElapsedMs: 0,
             complete: false,
-            matchPlanMap: new Map(),
-            misses: includeDebugSummary ? [] : null
+            matchPlanMap: new Map()
         };
         entry.chunkedPlanState = chunkedPlanState;
         return chunkedPlanState;
     }
 
-    function planChunkedParagraphTo(entry, targetWordIndex, includeDebugSummary = false, budgetMs = ANNOTATION_CHUNK_BUDGET_MS, maxStarts = ANNOTATION_CHUNK_MAX_STARTS) {
+    function planChunkedParagraphTo(entry, targetWordIndex, budgetMs = ANNOTATION_CHUNK_INITIAL_IMMEDIATE_BUDGET_MS, maxStarts = ANNOTATION_CHUNK_INITIAL_IMMEDIATE_MAX_STARTS) {
         const words = Array.isArray(entry?.words) ? entry.words : [];
-        const chunkedPlanState = ensureChunkedParagraphPlanState(entry, includeDebugSummary);
+        const chunkedPlanState = ensureChunkedParagraphPlanState(entry);
         const numericTargetWordIndex = Number(targetWordIndex);
         const safeTargetWordIndex = words.length
             ? Math.min(
@@ -2854,12 +3003,7 @@
             chunkedPlanState.complete ||
             chunkedPlanState.plannedThroughWordIndex >= safeTargetWordIndex
         ) {
-            return {
-                plannedStartCount: 0,
-                elapsedMs: 0,
-                plannedThroughWordIndex: chunkedPlanState.plannedThroughWordIndex,
-                planningComplete: chunkedPlanState.complete
-            };
+            return;
         }
 
         const planningStartedAt = nowMs();
@@ -2873,17 +3017,9 @@
             const result = findMatchFromWords(words, wordIndex);
 
             if (result.matched) {
-                chunkedPlanState.matchedCount += 1;
                 chunkedPlanState.matchPlanMap.set(wordIndex, result);
                 chunkedPlanState.nextWordIndex = wordIndex + result.wordCount;
             } else {
-                chunkedPlanState.unmatchedCount += 1;
-                if (includeDebugSummary && Array.isArray(chunkedPlanState.misses)) {
-                    chunkedPlanState.misses.push({
-                        ...result,
-                        wordIndex
-                    });
-                }
                 chunkedPlanState.nextWordIndex = wordIndex + 1;
             }
 
@@ -2896,15 +3032,8 @@
         }
 
         chunkedPlanState.complete = chunkedPlanState.nextWordIndex >= words.length;
-        const elapsedMs = elapsedDebugMs(planningStartedAt);
-        chunkedPlanState.planningElapsedMs += elapsedMs;
 
-        return {
-            plannedStartCount,
-            elapsedMs,
-            plannedThroughWordIndex: chunkedPlanState.plannedThroughWordIndex,
-            planningComplete: chunkedPlanState.complete
-        };
+        void plannedStartCount;
     }
 
     function premeasureInlineMatchGeometry(words, startIndex, match, renderMode) {
@@ -2913,55 +3042,49 @@
         }
 
         const word = words[startIndex];
+        const labelsNeedingMeasurement = matchLabels(match).filter((labelMatch) =>
+            measuredGeometryDecision(word, match, labelMatch).required
+        );
+
+        if (!labelsNeedingMeasurement.length) {
+            return;
+        }
+
         wordRecordRect(word);
-        matchLabels(match).forEach((labelMatch) => {
+        labelsNeedingMeasurement.forEach((labelMatch) => {
             measuredSubstringGeometry(word, match, labelMatch);
         });
     }
 
-    function createChunkedParagraphPhase(entry, phaseName, wordIndexes, includeDebugSummary = false) {
-        const chunkedPlanState = ensureChunkedParagraphPlanState(entry, includeDebugSummary);
+    function createChunkedParagraphPhase(entry, wordIndexes) {
         const selectedWordIndexes = uniqueSortedWordIndexes(wordIndexes);
         return {
             entry,
-            phaseName,
             wordIndexes: selectedWordIndexes,
-            cursor: 0,
-            chunkCount: 0,
-            processedWordCount: 0,
-            renderedMatchCount: 0,
-            elapsedMs: 0,
-            debugMatchSummaries: includeDebugSummary ? [] : null,
-            debugSelectedIndexSet: includeDebugSummary ? new Set(selectedWordIndexes) : null,
-            planningElapsedMsStart: chunkedPlanState.planningElapsedMs,
-            plannedThroughWordIndexStart: chunkedPlanState.plannedThroughWordIndex,
-            matchedCountStart: chunkedPlanState.matchedCount,
-            unmatchedCountStart: chunkedPlanState.unmatchedCount
+            cursor: 0
         };
     }
 
-    function processChunkedParagraphPhase(phase, renderMode, includeDebugSummary = false) {
+    function processChunkedParagraphPhase(phase, renderMode, chunkPolicy = defaultAnnotationChunkPolicy(), includeDebugSummary = false) {
         const entry = phase?.entry;
         const words = Array.isArray(entry?.words) ? entry.words : [];
-        const chunkedPlanState = ensureChunkedParagraphPlanState(entry, includeDebugSummary);
+        const chunkedPlanState = ensureChunkedParagraphPlanState(entry);
         const chunkStartedAt = nowMs();
-        const chunkWordIndexes = [];
-        let plannedStartCount = 0;
-        let renderedMatchCount = 0;
+        const chunkBudgetMs = Math.max(1, Number(chunkPolicy?.budgetMs) || defaultAnnotationChunkPolicy().budgetMs);
+        const chunkMaxStarts = Math.max(1, Number(chunkPolicy?.maxStarts) || defaultAnnotationChunkPolicy().maxStarts);
+        let processedWordCount = 0;
 
         while (phase.cursor < phase.wordIndexes.length) {
             const wordIndex = phase.wordIndexes[phase.cursor];
-            const remainingBudgetMs = Math.max(1, ANNOTATION_CHUNK_BUDGET_MS - (nowMs() - chunkStartedAt));
+            const remainingBudgetMs = Math.max(1, chunkBudgetMs - (nowMs() - chunkStartedAt));
 
             if (!chunkedPlanState.complete && chunkedPlanState.plannedThroughWordIndex < wordIndex) {
-                const planStats = planChunkedParagraphTo(
+                planChunkedParagraphTo(
                     entry,
                     wordIndex,
-                    includeDebugSummary,
                     remainingBudgetMs,
-                    ANNOTATION_CHUNK_MAX_STARTS
+                    chunkMaxStarts
                 );
-                plannedStartCount += planStats.plannedStartCount;
 
                 if (!chunkedPlanState.complete && chunkedPlanState.plannedThroughWordIndex < wordIndex) {
                     break;
@@ -2971,200 +3094,63 @@
             const plan = chunkedPlanState.matchPlanMap.get(wordIndex);
             if (plan) {
                 premeasureInlineMatchGeometry(words, wordIndex, plan, renderMode);
-                const matchSummary = annotateMatch(
+                annotateMatch(
                     words,
                     wordIndex,
                     plan,
                     renderMode,
                     includeDebugSummary
                 );
-                renderedMatchCount += 1;
-                phase.renderedMatchCount += 1;
-                if (
-                    includeDebugSummary &&
-                    Array.isArray(phase.debugMatchSummaries) &&
-                    phase.debugMatchSummaries.length < 8
-                ) {
-                    phase.debugMatchSummaries.push(matchSummary);
-                }
             }
 
-            chunkWordIndexes.push(wordIndex);
             phase.cursor += 1;
-            phase.processedWordCount += 1;
+            processedWordCount += 1;
 
             if (
-                chunkWordIndexes.length >= ANNOTATION_CHUNK_MAX_STARTS ||
-                (nowMs() - chunkStartedAt) >= ANNOTATION_CHUNK_BUDGET_MS
+                processedWordCount >= chunkMaxStarts ||
+                (nowMs() - chunkStartedAt) >= chunkBudgetMs
             ) {
                 break;
             }
         }
 
-        const elapsedMs = elapsedDebugMs(chunkStartedAt);
-        phase.chunkCount += 1;
-        phase.elapsedMs += elapsedMs;
-
         return {
-            done: phase.cursor >= phase.wordIndexes.length,
-            chunkWordIndexes,
-            plannedStartCount,
-            renderedMatchCount,
-            elapsedMs,
-            plannedThroughWordIndex: chunkedPlanState.plannedThroughWordIndex,
-            planningComplete: chunkedPlanState.complete
+            done: phase.cursor >= phase.wordIndexes.length
         };
-    }
-
-    function summarizeChunkedParagraphPhase(phase, includeDebugSummary = false) {
-        const entry = phase?.entry;
-        const paragraph = entry?.paragraph;
-        const words = Array.isArray(entry?.words) ? entry.words : [];
-        const chunkedPlanState = ensureChunkedParagraphPlanState(entry, includeDebugSummary);
-        const renderedWordSummary = indexRangeSummary(phase.wordIndexes);
-        const plannedWordCount = Math.max(
-            0,
-            chunkedPlanState.plannedThroughWordIndex - phase.plannedThroughWordIndexStart
-        );
-        const summary = {
-            site: currentSiteAdapter()?.key || "unknown",
-            phase: phase.phaseName,
-            paragraphIndex: entry?.index ?? -1,
-            wordCount: words.length,
-            plannedWordCount,
-            plannedThroughWordIndex: chunkedPlanState.plannedThroughWordIndex,
-            planningComplete: chunkedPlanState.complete,
-            matchedCount: Math.max(0, chunkedPlanState.matchedCount - phase.matchedCountStart),
-            unmatchedCount: Math.max(0, chunkedPlanState.unmatchedCount - phase.unmatchedCountStart),
-            renderedWordCount: renderedWordSummary.count,
-            renderedWordRanges: renderedWordSummary.ranges,
-            renderedWordRangesTruncated: renderedWordSummary.truncated,
-            renderedMatchCount: phase.renderedMatchCount,
-            planningElapsedMs: Math.max(0, chunkedPlanState.planningElapsedMs - phase.planningElapsedMsStart),
-            renderElapsedMs: phase.elapsedMs,
-            chunkCount: phase.chunkCount
-        };
-
-        if (includeDebugSummary && paragraph instanceof HTMLElement) {
-            const selectedMisses = Array.isArray(chunkedPlanState.misses)
-                ? chunkedPlanState.misses.filter((miss) => phase.debugSelectedIndexSet?.has(miss.wordIndex))
-                : [];
-            summary.activeWordCount = words.filter((word) => wordRecordHasClass(word, "active")).length;
-            summary.currentLetterCount = paragraph.querySelectorAll(".letter.current").length;
-            summary.wordSample = phase.wordIndexes
-                .slice(0, 12)
-                .map((wordIndex) => wordRecordText(words[wordIndex]));
-            summary.matchSample = (phase.debugMatchSummaries || []).slice(0, 8).map((matchSummary) => ({
-                word: matchSummary.word,
-                hint: matchSummary.hint,
-                active: matchSummary.active,
-                matchCount: matchSummary.matchCount,
-                wordCount: matchSummary.wordCount
-            }));
-            summary.missSample = selectedMisses.slice(0, 8).map((miss) => ({
-                wordIndex: miss.wordIndex,
-                word: miss.word,
-                normalized: miss.normalized || "",
-                reason: miss.reason
-            }));
-
-            log("Paragraph annotation summary", summary);
-        }
-
-        return summary;
-    }
-
-    function aggregateChunkedPhaseSummaries(summaries) {
-        return (Array.isArray(summaries) ? summaries : []).reduce((aggregate, summary) => {
-            aggregate.paragraphCount += 1;
-            aggregate.totalWords += summary.wordCount || 0;
-            aggregate.plannedWordCount += summary.plannedWordCount || 0;
-            aggregate.matchedCount += summary.matchedCount || 0;
-            aggregate.unmatchedCount += summary.unmatchedCount || 0;
-            aggregate.renderedWordCount += summary.renderedWordCount || 0;
-            aggregate.renderedMatchCount += summary.renderedMatchCount || 0;
-            aggregate.planningElapsedMs += summary.planningElapsedMs || 0;
-            aggregate.renderElapsedMs += summary.renderElapsedMs || 0;
-            aggregate.chunkCount += summary.chunkCount || 0;
-            return aggregate;
-        }, {
-            paragraphCount: 0,
-            totalWords: 0,
-            plannedWordCount: 0,
-            matchedCount: 0,
-            unmatchedCount: 0,
-            renderedWordCount: 0,
-            renderedMatchCount: 0,
-            planningElapsedMs: 0,
-            renderElapsedMs: 0,
-            chunkCount: 0
-        });
     }
 
     function processAnnotationChunkQueue(queueState) {
         if (isAnnotationPassStale(queueState.passToken, queueState.promptSignature)) {
-            logFirstPaint("Chunk queue skipped", {
-                site: queueState.site,
-                passToken: queueState.passToken,
-                phase: queueState.phaseName,
-                reason: "stale-pass-or-signature-changed",
-                elapsedMs: elapsedDebugMs(queueState.passStartedAt)
-            });
             return;
         }
 
         const phase = queueState.phases.shift();
         if (!phase) {
-            queueState.onComplete(queueState.completedSummaries);
+            queueState.onComplete();
             return;
         }
 
+        const chunkPolicy = annotationChunkPolicyForQueue(queueState);
         const chunkStats = processChunkedParagraphPhase(
             phase,
             queueState.renderMode,
+            chunkPolicy,
             queueState.includeDebugSummary
         );
-        const chunkWordSummary = indexRangeSummary(chunkStats.chunkWordIndexes);
-
-        logFirstPaint("Chunk complete", {
-            site: queueState.site,
-            passToken: queueState.passToken,
-            phase: queueState.phaseName,
-            paragraphIndex: phase.entry?.index ?? -1,
-            chunkIndex: phase.chunkCount,
-            chunkWordCount: chunkWordSummary.count,
-            chunkWordRanges: chunkWordSummary.ranges,
-            chunkWordRangesTruncated: chunkWordSummary.truncated,
-            plannedStartCount: chunkStats.plannedStartCount,
-            renderedMatchCount: chunkStats.renderedMatchCount,
-            plannedThroughWordIndex: chunkStats.plannedThroughWordIndex,
-            planningComplete: chunkStats.planningComplete,
-            queueDepth: queueState.phases.length + (chunkStats.done ? 0 : 1),
-            elapsedMs: chunkStats.elapsedMs,
-            totalElapsedMs: elapsedDebugMs(queueState.passStartedAt)
-        });
+        queueState.processedChunkCount += 1;
 
         if (chunkStats.done) {
-            queueState.completedSummaries.push(
-                summarizeChunkedParagraphPhase(phase, queueState.includeDebugSummary)
-            );
+            // Phase complete; continue to the next queued phase.
         } else {
             queueState.phases.push(phase);
         }
 
         if (isAnnotationPassStale(queueState.passToken, queueState.promptSignature)) {
-            logFirstPaint("Chunk queue cancelled", {
-                site: queueState.site,
-                passToken: queueState.passToken,
-                phase: queueState.phaseName,
-                reason: "stale-pass-or-signature-changed-after-chunk",
-                elapsedMs: elapsedDebugMs(queueState.passStartedAt)
-            });
             return;
         }
 
         if (!queueState.phases.length) {
-            queueState.onComplete(queueState.completedSummaries);
+            queueState.onComplete();
             return;
         }
 
@@ -3172,10 +3158,7 @@
     }
 
     function startChunkedAnnotationBatches({
-        adapter,
         passToken,
-        passStartedAt,
-        force,
         renderMode,
         promptSignature,
         immediateEntries,
@@ -3183,20 +3166,10 @@
         includeDebugSummary
     }) {
         const immediatePhases = immediateEntries
-            .map((entry) => createChunkedParagraphPhase(
-                entry,
-                "immediate",
-                entry.immediateWordIndexes,
-                includeDebugSummary
-            ))
+            .map((entry) => createChunkedParagraphPhase(entry, entry.immediateWordIndexes))
             .filter((phase) => phase.wordIndexes.length);
         const deferredPhases = deferredEntries
-            .map((entry) => createChunkedParagraphPhase(
-                entry,
-                "deferred",
-                entry.deferredWordIndexes,
-                includeDebugSummary
-            ))
+            .map((entry) => createChunkedParagraphPhase(entry, entry.deferredWordIndexes))
             .filter((phase) => phase.wordIndexes.length);
 
         function startDeferredQueue() {
@@ -3206,82 +3179,34 @@
                 return;
             }
 
-            logFirstPaint("Deferred queue starting", {
-                site: adapter.key,
-                passToken,
-                renderMode,
-                batch: annotationBatchDebugSummary(
-                    connectedDeferredPhases.map((phase) => phase.entry),
-                    "deferredWordIndexes"
-                ),
-                elapsedMs: elapsedDebugMs(passStartedAt)
-            });
-
             scheduleAnnotationWorkChunk(() => processAnnotationChunkQueue({
-                site: adapter.key,
                 passToken,
-                passStartedAt,
                 promptSignature,
                 phaseName: "deferred",
                 renderMode,
                 includeDebugSummary,
                 phases: connectedDeferredPhases,
-                completedSummaries: [],
-                onComplete(summaries) {
-                    const aggregate = aggregateChunkedPhaseSummaries(summaries);
-                    logFirstPaint("Deferred queue complete", {
-                        site: adapter.key,
-                        passToken,
-                        forced: force,
-                        entryCount: STATE.dictionary.entryCount,
-                        ...aggregate,
-                        elapsedMs: elapsedDebugMs(passStartedAt)
-                    });
+                processedChunkCount: 0,
+                onComplete() {
                     STATE.annotationMeasurementCache = null;
                 }
             }), 0);
         }
 
         if (!immediatePhases.length) {
-            logFirstPaint("Immediate queue skipped", {
-                site: adapter.key,
-                passToken,
-                reason: "no-immediate-words",
-                elapsedMs: elapsedDebugMs(passStartedAt)
-            });
             startDeferredQueue();
             return;
         }
 
-        logFirstPaint("Immediate queue starting", {
-            site: adapter.key,
-            passToken,
-            renderMode,
-            batch: annotationBatchDebugSummary(immediateEntries, "immediateWordIndexes"),
-            elapsedMs: elapsedDebugMs(passStartedAt)
-        });
-
         processAnnotationChunkQueue({
-            site: adapter.key,
             passToken,
-            passStartedAt,
             promptSignature,
             phaseName: "immediate",
             renderMode,
             includeDebugSummary,
             phases: immediatePhases,
-            completedSummaries: [],
-            onComplete(summaries) {
-                const aggregate = aggregateChunkedPhaseSummaries(summaries);
-                logFirstPaint("Immediate queue complete", {
-                    site: adapter.key,
-                    passToken,
-                    forced: force,
-                    deferredParagraphCount: deferredEntries.length,
-                    entryCount: STATE.dictionary.entryCount,
-                    ...aggregate,
-                    elapsedMs: elapsedDebugMs(passStartedAt)
-                });
+            processedChunkCount: 0,
+            onComplete() {
                 startDeferredQueue();
             }
         });
@@ -3321,9 +3246,12 @@
             return;
         }
 
+        const renderMode = adapterRenderMode(adapter);
+        const shouldDeferOffscreenParagraphs =
+            renderMode === "inline" &&
+            adapterFlag("deferOffscreenParagraphs");
         const paragraphs = getParagraphBoxes();
         STATE.trackedParagraphs = paragraphs;
-        const renderMode = adapterRenderMode(adapter);
         if (renderMode === "overlay") {
             clearOverlayAnnotations();
             syncOverlayTypography(getOverlayRoot());
@@ -3333,8 +3261,27 @@
         }
 
         const shouldCacheWordRects = renderMode === "overlay" || adapterFlag("cacheInlineWordRects");
-        const wordLists = paragraphs.map((paragraph) => getWordElements(paragraph));
-        const wordRecordLists = wordLists.map((words) => createWordRecords(words, shouldCacheWordRects));
+        const paragraphEntries = paragraphs.map((paragraph, index) => {
+            const paragraphRect = normalizedViewportRect(paragraph.getBoundingClientRect());
+            return {
+                paragraph,
+                index,
+                paragraphRect,
+                paragraphInViewport: paragraphRect ? rectIntersectsViewport(paragraphRect) : false
+            };
+        });
+        const wordLists = paragraphEntries.map((entry) => getWordElements(entry.paragraph));
+        const wordRecordLists = paragraphEntries.map((entry, index) => {
+            const includeRects = shouldCacheWordRects && (!shouldDeferOffscreenParagraphs || entry.paragraphInViewport);
+            return createWordRecords(wordLists[index], includeRects);
+        });
+        const populatedParagraphEntries = paragraphEntries.map((entry, index) => ({
+            ...entry,
+            words: wordRecordLists[index],
+            cachedWordRectCount: shouldCacheWordRects && (!shouldDeferOffscreenParagraphs || entry.paragraphInViewport)
+                ? wordRecordLists[index].length
+                : 0
+        }));
         const nextPromptSignature = adapter.buildPromptSignature(paragraphs, wordRecordLists);
 
         if (adapter.key === "keybr") {
@@ -3347,11 +3294,15 @@
             log("Paragraph discovery", {
                 site: adapter.key,
                 paragraphCount: paragraphs.length,
-                paragraphSamples: paragraphs.slice(0, 5).map((paragraph, index) => ({
-                    paragraphIndex: index,
-                    className: paragraph.className || "",
-                    wordCount: wordRecordLists[index]?.length || 0,
-                    sampleText: annotationFreeTextContent(paragraph).trim().slice(0, 160)
+                paragraphSamples: populatedParagraphEntries.slice(0, 5).map((entry) => ({
+                    paragraphIndex: entry.index,
+                    className: entry.paragraph.className || "",
+                    wordCount: entry.words?.length || 0,
+                    paragraphInViewport: entry.paragraphInViewport,
+                    cachedWordRectCount: entry.cachedWordRectCount || 0,
+                    top: entry.paragraphRect ? Math.round(entry.paragraphRect.top) : null,
+                    bottom: entry.paragraphRect ? Math.round(entry.paragraphRect.bottom) : null,
+                    sampleText: annotationFreeTextContent(entry.paragraph).trim().slice(0, 160)
                 }))
             });
         }
@@ -3365,15 +3316,7 @@
             return;
         }
 
-        const paragraphEntries = paragraphs.map((paragraph, index) => ({
-            paragraph,
-            index,
-            words: wordRecordLists[index]
-        }));
-        const shouldDeferOffscreenParagraphs =
-            renderMode === "inline" &&
-            adapterFlag("deferOffscreenParagraphs");
-        let paragraphBatches = paragraphEntries.map((entry) =>
+        let paragraphBatches = populatedParagraphEntries.map((entry) =>
             buildParagraphWordBatch(entry, shouldDeferOffscreenParagraphs)
         );
         let immediateEntries = paragraphBatches.filter((entry) => entry.immediateWordIndexes.length);
@@ -3382,45 +3325,25 @@
 
         if (shouldDeferOffscreenParagraphs) {
             if (!immediateEntries.length) {
-                paragraphBatches = paragraphEntries.map((entry) => ({
+                paragraphBatches = populatedParagraphEntries.map((entry) => ({
                     ...entry,
                     immediateWordIndexes: allWordIndexes(entry.words),
-                    deferredWordIndexes: []
+                    deferredWordIndexes: [],
+                    wordRectProbeCount: entry.wordRectProbeCount || 0
                 }));
                 immediateEntries = paragraphBatches;
                 deferredEntries = [];
                 promotedAllParagraphsToImmediate = true;
             }
         }
-
         paragraphs.forEach((paragraph) => clearAnnotationsWithin(paragraph));
         STATE.lastPromptSignature = nextPromptSignature;
 
         const shouldChunkAnnotationBatches = shouldDeferOffscreenParagraphs;
-        const batchPlanPayload = {
-            site: adapter.key,
-            passToken,
-            forced: force,
-            renderMode,
-            chunkedRendering: shouldChunkAnnotationBatches,
-            shouldDeferOffscreenParagraphs,
-            promotedAllParagraphsToImmediate,
-            viewport: {
-                width: window.innerWidth,
-                height: window.innerHeight
-            },
-            immediate: annotationBatchDebugSummary(immediateEntries, "immediateWordIndexes"),
-            deferred: annotationBatchDebugSummary(deferredEntries, "deferredWordIndexes"),
-            elapsedMs: elapsedDebugMs(passStartedAt)
-        };
 
         if (shouldChunkAnnotationBatches) {
-            logFirstPaint("Annotation batch plan", batchPlanPayload);
             startChunkedAnnotationBatches({
-                adapter,
                 passToken,
-                passStartedAt,
-                force,
                 renderMode,
                 promptSignature: nextPromptSignature,
                 immediateEntries,
@@ -3430,7 +3353,18 @@
             return;
         }
 
-        log("Annotation batch plan", batchPlanPayload);
+        log("Annotation batch plan", {
+            site: adapter.key,
+            passToken,
+            forced: force,
+            renderMode,
+            paragraphCount: paragraphBatches.length,
+            immediateParagraphCount: immediateEntries.length,
+            deferredParagraphCount: deferredEntries.length,
+            promotedAllParagraphsToImmediate,
+            shouldDeferOffscreenParagraphs,
+            elapsedMs: elapsedDebugMs(passStartedAt)
+        });
 
         const immediatePlanningStartedAt = typeof performance?.now === "function" ? performance.now() : Date.now();
         immediateEntries.forEach((entry) => ensureParagraphMatchPlan(entry, STATE.settings.debugLogging));
@@ -3574,6 +3508,7 @@
         refreshLookupMetadata();
         STATE.settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
         applyAppearanceSettings();
+        resetHintLabelTemplateCache("load-state");
 
         log("Loaded state", {
             hasDictionary: Boolean(STATE.dictionary),
@@ -3777,6 +3712,7 @@
                     stored[STORAGE_KEYS.inputDisplayOverrides]
                 );
                 refreshLookupMetadata();
+                resetHintLabelTemplateCache("dictionary-change");
                 log("Dictionary changed", {
                     entryCount: STATE.dictionary?.entryCount ?? 0
                 });
@@ -3787,6 +3723,7 @@
         if (changes[STORAGE_KEYS.settings]) {
             STATE.settings = hydrateSettings(changes[STORAGE_KEYS.settings].newValue);
             applyAppearanceSettings();
+            resetHintLabelTemplateCache("settings-change");
             log("Settings changed", STATE.settings);
             scheduleAnnotation(true);
         }
@@ -3799,6 +3736,7 @@
             hostname: location.hostname,
             pathname: location.pathname
         });
+        installHintLabelClickDelegation();
         installLocationObserver();
         installContainerObserver();
         scheduleAnnotation(true);
