@@ -1773,7 +1773,7 @@
 
             for (let index = 0; index < entryCount; index += 1) {
                 if (index === 0 || index % 25 === 0 || index === entryCount - 1) {
-                    setStatus(els.importStatus, `Syncing chordmap from device... ${index}/${entryCount}`);
+                    setStatus(els.importStatus, `Syncing chordmap from device. Please stay on this page until completed: ${index}/${entryCount}`);
                 }
 
                 const responsePattern = new RegExp(`^CML\\s+C1\\s+${index}\\b`);
