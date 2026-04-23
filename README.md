@@ -14,9 +14,11 @@ Note that using this extension with Keybr places the cursor in a weird place at 
 
 ## Features
 - Shows you which words you have chords for in a typing training session. You can choose to either show the exact chord input or to hide the input but still be reminded that the word is chordable.
-- Shows every part of a word that's chordable. 
-  - Ex. If you run into the word "hippopotomonstrosesquippedaliophobia", but you don't have it in your chord library, but you ***do*** have "hippo" and "phobia", then you'll see hints for "hippo" and "phobia" anchored to the relevant parts of the word so you can chord "hippo", type out all the characters between that and "phobia", then chord "phobia".
-  - Also useful for seeing that you can chord "great", then hit the "er" modifier to turn it into "greater".
+- Shows every part of a word that's chordable with hints and outlines
+  - Ex: If you run into the word "hippopotomonstrosesquippedaliophobia", but you don't have it in your chord library, but you ***do*** have "hippo" and "phobia", then you'll see hints for "hippo" and "phobia" anchored to the relevant parts of the word so you can chord "hippo", type out all the characters between that and "phobia", then chord "phobia".
+  - Also useful for seeing that you can chord "great", then hit the "er" modifier to turn it into "greater". 
+  - Outlines and non-whole word hints can be turned off if you find them distracting.
+
 
 ## Installation
 Getting it from the [Chrome Web Store](https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn) would be the easiest method for installation and ensuring the extension stays up-to-date.
