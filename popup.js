@@ -93,6 +93,30 @@
             : String(Math.round(currentValue * 10) / 10);
     }
 
+    function getAppearancePreviewEmBasePx() {
+        const previewAnchor = els.popupLightPreviewWord || els.popupDarkPreviewWord;
+        const previewFontSize = Number.parseFloat(window.getComputedStyle(previewAnchor).fontSize);
+        return Number.isFinite(previewFontSize) && previewFontSize > 0 ? previewFontSize : 16;
+    }
+
+    function convertHintTextSizeValueForUnitChange(previousUnit, nextUnit) {
+        if (previousUnit === nextUnit) {
+            return;
+        }
+
+        const currentValue = Number(els.popupHintTextFontSizeValue.value);
+        if (!Number.isFinite(currentValue)) {
+            return;
+        }
+
+        const previewEmBasePx = getAppearancePreviewEmBasePx();
+        const convertedValue = previousUnit === "px"
+            ? currentValue / previewEmBasePx
+            : currentValue * previewEmBasePx;
+
+        els.popupHintTextFontSizeValue.value = String(convertedValue);
+    }
+
     function updateAppearancePreview() {
         const settings = currentSettingsFromForm();
         const fontSize = `${settings.hint_text_font_size_value}${settings.hint_text_font_size_unit}`;
@@ -243,6 +267,7 @@
         els.popupHintBoxLightModeOpacity.value = settings.hint_box_light_mode_opacity;
         els.popupHintTextFontSizeValue.value = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em;
         els.popupHintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
+        els.popupHintTextFontSizeUnit.dataset.previousUnit = els.popupHintTextFontSizeUnit.value;
         els.popupHintPosition.value = settings.hint_position || "left";
         els.popupHintDisplay.value = settings.hint_display || "always";
         els.popupEnableSubstringHints.checked = settings.enableSubstringHints;
@@ -428,7 +453,11 @@
     });
 
     els.popupHintTextFontSizeUnit.addEventListener("change", () => {
+        const nextUnit = els.popupHintTextFontSizeUnit.value === "px" ? "px" : "em";
+        const previousUnit = els.popupHintTextFontSizeUnit.dataset.previousUnit === "px" ? "px" : "em";
+        convertHintTextSizeValueForUnitChange(previousUnit, nextUnit);
         syncHintTextSizeFieldBehavior();
+        els.popupHintTextFontSizeUnit.dataset.previousUnit = nextUnit;
         updateAppearancePreview();
     });
 

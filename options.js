@@ -364,6 +364,30 @@
             : String(Math.round(currentValue * 10) / 10);
     }
 
+    function getAppearancePreviewEmBasePx() {
+        const previewAnchor = els.hintPreviewWordLight || els.hintPreviewWordDark;
+        const previewFontSize = Number.parseFloat(window.getComputedStyle(previewAnchor).fontSize);
+        return Number.isFinite(previewFontSize) && previewFontSize > 0 ? previewFontSize : 16;
+    }
+
+    function convertHintTextSizeValueForUnitChange(previousUnit, nextUnit) {
+        if (previousUnit === nextUnit) {
+            return;
+        }
+
+        const currentValue = Number(els.hintTextFontSizeValue.value);
+        if (!Number.isFinite(currentValue)) {
+            return;
+        }
+
+        const previewEmBasePx = getAppearancePreviewEmBasePx();
+        const convertedValue = previousUnit === "px"
+            ? currentValue / previewEmBasePx
+            : currentValue * previewEmBasePx;
+
+        els.hintTextFontSizeValue.value = String(convertedValue);
+    }
+
     function refreshMeta(parsedDictionary) {
         els.metaSource.textContent = parsedDictionary?.source ?? "—";
         els.metaVersion.textContent = parsedDictionary?.charaVersion ?? "—";
@@ -991,6 +1015,7 @@
 
         els.hintTextFontSizeValue.value = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em ?? 0.5;
         els.hintTextFontSizeUnit.value = settings.hint_text_font_size_unit || "em";
+        els.hintTextFontSizeUnit.dataset.previousUnit = els.hintTextFontSizeUnit.value;
         els.hintPosition.value = settings.hint_position || "left";
         els.hintDisplay.value = settings.hint_display || "always";
         els.keybrHintLayout.value = settings.keybr_hint_layout || "extra-spacing";
@@ -2196,7 +2221,11 @@
     });
 
     els.hintTextFontSizeUnit.addEventListener("change", () => {
+        const nextUnit = els.hintTextFontSizeUnit.value === "px" ? "px" : "em";
+        const previousUnit = els.hintTextFontSizeUnit.dataset.previousUnit === "px" ? "px" : "em";
+        convertHintTextSizeValueForUnitChange(previousUnit, nextUnit);
         syncHintTextSizeFieldBehavior();
+        els.hintTextFontSizeUnit.dataset.previousUnit = nextUnit;
         updateAppearancePreview(currentSettingsFromForm());
     });
 
