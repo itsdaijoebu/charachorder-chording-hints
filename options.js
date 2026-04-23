@@ -22,9 +22,6 @@
     let inputSearchQuery = "";
     let outputSearchQuery = "";
     let saveButtonsResetTimer = null;
-    let optionHotkeys = CCHShared.defaultHotkeys();
-    let stopHotkeyCapture = null;
-
     const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
     applyOptionsTheme("system");
@@ -281,7 +278,6 @@
             ...(settings.specialTokenDescriptions || {})
         };
 
-        settings.hotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
         settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
         settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
@@ -937,8 +933,6 @@
             keybr_hint_layout: ["consistent", "extra-spacing"].includes(els.keybrHintLayout.value)
                 ? els.keybrHintLayout.value
                 : "extra-spacing",
-
-            hotkeys: CCHShared.normalizeHotkeys(optionHotkeys),
         };
     }
 
@@ -1002,73 +996,7 @@
         els.keybrHintLayout.value = settings.keybr_hint_layout || "extra-spacing";
         syncHintTextSizeFieldBehavior();
 
-        optionHotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
-        updateHotkeyDisplays();
-        clearHotkeyCaptureStatus();
         updateAppearancePreview(settings);
-    }
-
-
-    function updateHotkeyDisplays() {
-        if (els.forceRefreshHotkeyDisplay) {
-            els.forceRefreshHotkeyDisplay.textContent = CCHShared.hotkeyDisplay(optionHotkeys.forceRefresh);
-        }
-    }
-
-    function setHotkeyCaptureStatus(message, isError = false) {
-        if (!els.hotkeyCaptureStatus) return;
-        els.hotkeyCaptureStatus.textContent = message;
-        els.hotkeyCaptureStatus.classList.toggle("error", Boolean(isError));
-    }
-
-    function clearHotkeyCaptureStatus() {
-        setHotkeyCaptureStatus("Press “Change hotkey”, then press the new key combination. Press Escape to cancel.", false);
-    }
-
-    function startHotkeyCapture(button, onCapture) {
-        if (!button) return;
-        if (stopHotkeyCapture) {
-            stopHotkeyCapture();
-            stopHotkeyCapture = null;
-        }
-
-        const originalLabel = button.textContent;
-        button.textContent = "Press keys…";
-        button.classList.add("isRecording");
-        setHotkeyCaptureStatus("Listening for a new hotkey…", false);
-
-        const onKeyDown = (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-
-            if (event.code === "Escape") {
-                cleanup();
-                clearHotkeyCaptureStatus();
-                return;
-            }
-
-            const hotkey = CCHShared.eventToHotkey(event);
-            if (!hotkey) {
-                setHotkeyCaptureStatus("Use at least one non-modifier key.", true);
-                return;
-            }
-
-            onCapture(CCHShared.normalizeHotkeys({forceRefresh: hotkey}).forceRefresh);
-            cleanup();
-            setHotkeyCaptureStatus(`New hotkey: ${CCHShared.hotkeyDisplay(hotkey)}`);
-        };
-
-        function cleanup() {
-            document.removeEventListener("keydown", onKeyDown, true);
-            button.textContent = originalLabel;
-            button.classList.remove("isRecording");
-            if (stopHotkeyCapture === cleanup) {
-                stopHotkeyCapture = null;
-            }
-        }
-
-        stopHotkeyCapture = cleanup;
-        document.addEventListener("keydown", onKeyDown, true);
     }
 
     function updateAppearancePreview(settings) {
@@ -2242,18 +2170,6 @@
     els.pageJumpButton.addEventListener("click", () => {
         goToPage(Number.parseInt(els.pageJumpInput.value, 10) || 1);
     });
-
-    if (els.recordForceRefreshHotkeyButton) {
-        els.recordForceRefreshHotkeyButton.addEventListener("click", () => {
-            startHotkeyCapture(els.recordForceRefreshHotkeyButton, (nextHotkey) => {
-                optionHotkeys = {
-                    ...optionHotkeys,
-                    forceRefresh: nextHotkey
-                };
-                updateHotkeyDisplays();
-            });
-        });
-    }
 
     els.pageJumpInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {

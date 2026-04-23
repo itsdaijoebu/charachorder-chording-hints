@@ -160,7 +160,6 @@
             ...CCHShared.defaultSpecialTokenDescriptions(),
             ...(settings.specialTokenDescriptions || {})
         };
-        settings.hotkeys = CCHShared.normalizeHotkeys(settings.hotkeys);
         settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
         settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
@@ -288,7 +287,6 @@
                 : (els.popupHintCharacterOrderMode.value === "charachorder-default"
                     ? "charachorder-default"
                     : "best-match"),
-            hotkeys: draftSettings.hotkeys,
             enabled: draftSettings.enabled
         });
     }
