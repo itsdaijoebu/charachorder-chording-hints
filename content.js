@@ -1348,6 +1348,7 @@
     function substringCacheKey(normalizedWord) {
         return JSON.stringify({
             normalizedWord,
+            minimumWordLength: minimumWordLength(),
             selectionMode: STATE.settings.selectionMode,
             includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
             includeModifierStyle: Boolean(STATE.settings.includeModifierStyle)
@@ -1432,6 +1433,8 @@
             return { matched: false, reason: "below-minimum-length", word: rawText, normalized: normalizedWord };
         }
 
+        const requiredLength = minimumWordLength();
+
         if (STATE.substringLookup?.exactSingleWordMatches?.has(normalizedWord)) {
             return { matched: false, reason: "exact-word-exists", word: rawText, normalized: normalizedWord };
         }
@@ -1469,6 +1472,10 @@
 
         const segments = [];
         for (const candidate of candidatePool) {
+            if (candidate.length < requiredLength) {
+                continue;
+            }
+
             let searchIndex = 0;
             while (searchIndex < normalizedWord.length) {
                 const matchIndex = normalizedWord.indexOf(candidate.normalized, searchIndex);

@@ -222,7 +222,7 @@
           </select>
         </label>
         <label class="fieldLabel" for="minimumWordLength">
-          <span class="labelWithTooltip tooltipable" data-tooltip="The minimum length a word needs to be to trigger chord hints">
+          <span class="labelWithTooltip tooltipable" data-tooltip="The minimum length a word or substring needs to be to trigger chord hints.&#10;&#10;Try increasing to improve performance if necessary (since less words need to be accounted for).">
             <span>Minimum word length</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
@@ -230,8 +230,8 @@
         </label>
 
         <label class="check" for="enabled"><input id="enabled" type="checkbox"><span>Enable hints</span></label>
-        <label class="check tooltipable" for="enableSubstringHints" data-tooltip="Enabled: When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater' in your dictionary&#10;&#10;May affect performance, so disable if causing slowdowns."><input id="enableSubstringHints" type="checkbox"><span>Enable Substring Hints</span><span class="tooltipIcon" aria-hidden="true"></span></label>
-        <label class="check tooltipable" for="showChordableWordOutlines" data-tooltip="Shows outlines around chordable output. May impact performance, so disable if causing slowdowns"><input id="showChordableWordOutlines" type="checkbox"><span>Show outlines on chordable words</span><span class="tooltipIcon" aria-hidden="true"></span></label>
+        <label class="check tooltipable" for="enableSubstringHints" data-tooltip="When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater' in your dictionary&#10;&#10;May affect performance, so disable if causing slowdowns."><input id="enableSubstringHints" type="checkbox"><span>Enable Substring Hints</span><span class="tooltipIcon" aria-hidden="true"></span></label>
+        <label class="check tooltipable" for="showChordableWordOutlines" data-tooltip="Shows outlines around chordable output.&#10;&#10;May impact performance, so disable if causing slowdowns"><input id="showChordableWordOutlines" type="checkbox"><span>Show outlines on chordable words</span><span class="tooltipIcon" aria-hidden="true"></span></label>
         <label class="check" for="includeArpeggiates"><input id="includeArpeggiates" type="checkbox"><span>Include arpeggiates</span></label>
         <label class="check" for="includeModifierStyle"><input id="includeModifierStyle" type="checkbox"><span>Include modifier-style outputs</span></label>
         <label class="check" for="debugLogging"><input id="debugLogging" type="checkbox"><span>Enable debug logging</span></label>
