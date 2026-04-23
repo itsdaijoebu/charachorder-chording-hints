@@ -1034,6 +1034,18 @@
         const hintOrderMode = settings.hintCharacterOrderMode === "charachorder-default"
             ? "charachorder-default"
             : "best-match";
+        const previewHints = [els.hintPreviewDark, els.hintPreviewLight];
+        const previousDisplayMode = els.hintPreviewDark.dataset.previewDisplayMode;
+
+        if (previousDisplayMode && previousDisplayMode !== settings.hint_display) {
+            previewHints.forEach((label) => {
+                label.classList.remove("previewHintForceVisible", "previewHintForceHidden");
+            });
+        }
+
+        previewHints.forEach((label) => {
+            label.dataset.previewDisplayMode = settings.hint_display;
+        });
 
         els.hintPreviewDark.textContent = previewHintTextForWord("dark", hintOrderMode);
         els.hintPreviewLight.textContent = previewHintTextForWord("light", hintOrderMode);

@@ -125,6 +125,18 @@
         const hintOrderMode = settings.hintCharacterOrderMode === "charachorder-default"
             ? "charachorder-default"
             : "best-match";
+        const previewHints = [els.popupDarkPreviewHint, els.popupLightPreviewHint];
+        const previousDisplayMode = els.popupDarkPreviewHint.dataset.previewDisplayMode;
+
+        if (previousDisplayMode && previousDisplayMode !== settings.hint_display) {
+            previewHints.forEach((label) => {
+                label.classList.remove("popupPreviewHintForceVisible", "popupPreviewHintForceHidden");
+            });
+        }
+
+        previewHints.forEach((label) => {
+            label.dataset.previewDisplayMode = settings.hint_display;
+        });
 
         els.popupDarkPreviewHint.textContent = previewHintTextForWord("dark", hintOrderMode);
         els.popupLightPreviewHint.textContent = previewHintTextForWord("light", hintOrderMode);

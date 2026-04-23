@@ -84,24 +84,6 @@
                     <option value="hover">Hide by default</option>
                 </select>
             </label>
-            <div class="appearanceFullRow popupPreviewGrid" aria-label="Live appearance preview">
-                <div class="popupPreviewPanel popupPreviewPanelDark">
-                    <div class="popupPreviewCanvas">
-                        <div id="popupDarkPreviewWord" class="popupPreviewWord">
-                            <div id="popupDarkPreviewHint" class="popupPreviewHint">dark</div>
-                            <span id="popupDarkPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
-                        </div>
-                    </div>
-                </div>
-                <div class="popupPreviewPanel popupPreviewPanelLight">
-                    <div class="popupPreviewCanvas">
-                        <div id="popupLightPreviewWord" class="popupPreviewWord">
-                            <div id="popupLightPreviewHint" class="popupPreviewHint">light</div>
-                            <span id="popupLightPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <section class="popupSubsection">
@@ -138,7 +120,27 @@
                         <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
                     </label>
                 </div>
+                
+                <div class="appearanceFullRow popupPreviewGrid" aria-label="Live appearance preview">
+                    <div class="popupPreviewPanel popupPreviewPanelDark">
+                        <div class="popupPreviewCanvas">
+                            <div id="popupDarkPreviewWord" class="popupPreviewWord">
+                                <div id="popupDarkPreviewHint" class="popupPreviewHint">dark</div>
+                                <span id="popupDarkPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="popupPreviewPanel popupPreviewPanelLight">
+                        <div class="popupPreviewCanvas">
+                            <div id="popupLightPreviewWord" class="popupPreviewWord">
+                                <div id="popupLightPreviewHint" class="popupPreviewHint">light</div>
+                                <span id="popupLightPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
+            
         </section>
     </section>
 
