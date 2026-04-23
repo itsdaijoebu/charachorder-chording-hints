@@ -23,7 +23,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://entertrained.app/prompt/*",
+        "https://entertrained.app/*",
         "https://monkeytype.com/*",
         "https://www.keybr.com/*"
       ],
