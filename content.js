@@ -50,6 +50,14 @@
                 const container = document.querySelector(".paragraphs");
                 return container instanceof HTMLElement ? container : null;
             },
+            getOverlayTypographyElement(container) {
+                if (!(container instanceof HTMLElement)) {
+                    return null;
+                }
+
+                const typographyElement = container.querySelector(".word, .letter");
+                return typographyElement instanceof HTMLElement ? typographyElement : container;
+            },
             getParagraphBoxes(container) {
                 if (!(container instanceof HTMLElement)) return [];
 
@@ -1029,18 +1037,27 @@
             return false;
         }
 
-        const rect = wordRecordRect(record.word, false);
+        const customAnchorRect = normalizedViewportRect(record.anchorRect);
+        const rect = customAnchorRect || wordRecordRect(record.word, false);
         if (!rect || rect.width <= 0 || rect.height <= 0) {
             record.label.style.display = "none";
             return false;
         }
 
         record.label.style.removeProperty("display");
-        const nextOverlayPosition = overlayPosition || overlayPositionFromViewportRect(root, rect);
-        const anchor = hintAnchorOffset(record.word, record.match, record.labelMatch, rect);
-        record.label.style.left = STATE.settings.hint_position === "center"
-            ? `${nextOverlayPosition.left + anchor.center}px`
-            : `${nextOverlayPosition.left + anchor.left}px`;
+        const nextOverlayPosition = customAnchorRect
+            ? overlayPositionFromViewportRect(root, rect)
+            : (overlayPosition || overlayPositionFromViewportRect(root, rect));
+        if (customAnchorRect) {
+            record.label.style.left = STATE.settings.hint_position === "center"
+                ? `${nextOverlayPosition.left + nextOverlayPosition.width / 2}px`
+                : `${nextOverlayPosition.left}px`;
+        } else {
+            const anchor = hintAnchorOffset(record.word, record.match, record.labelMatch, rect);
+            record.label.style.left = STATE.settings.hint_position === "center"
+                ? `${nextOverlayPosition.left + anchor.center}px`
+                : `${nextOverlayPosition.left + anchor.left}px`;
+        }
         record.label.style.top = `${nextOverlayPosition.top}px`;
         return true;
     }
@@ -1082,11 +1099,7 @@
     }
 
     function scheduleOverlayReposition() {
-        if (adapterRenderMode() !== "overlay") {
-            return;
-        }
-
-        if (!STATE.overlayRoot?.childElementCount || !STATE.overlayLabels.length) {
+        if (!STATE.overlayRoot?.childElementCount || (!STATE.overlayLabels.length && !STATE.overlayOutlines.length)) {
             return;
         }
 
@@ -1104,7 +1117,12 @@
         STATE.overlayResizeObserver?.disconnect();
         STATE.overlayResizeObserver = null;
 
-        if (adapterRenderMode() !== "overlay") {
+        if (
+            adapterRenderMode() !== "overlay" &&
+            !STATE.overlayRoot?.childElementCount &&
+            !STATE.overlayLabels.length &&
+            !STATE.overlayOutlines.length
+        ) {
             return;
         }
 
@@ -1788,6 +1806,182 @@
             : normalizedText;
     }
 
+    function entertrainedLetterSegments(wordEl) {
+        if (!(wordEl instanceof HTMLElement)) {
+            return [];
+        }
+
+        const segments = [];
+        let searchableOffset = 0;
+
+        Array.from(wordEl.children).forEach((child) => {
+            if (!(child instanceof HTMLElement) || !child.classList.contains("letter")) {
+                return;
+            }
+
+            const text = annotationFreeTextContent(child).replace(/\uE000/g, "");
+            if (!text) {
+                return;
+            }
+
+            segments.push({
+                element: child,
+                text,
+                start: searchableOffset,
+                end: searchableOffset + text.length
+            });
+            searchableOffset += text.length;
+        });
+
+        return segments;
+    }
+
+    function entertrainedWordViewportRects(wordEl) {
+        if (!(wordEl instanceof HTMLElement)) {
+            return [];
+        }
+
+        const rawRects = Array.from(wordEl.getClientRects())
+            .map(normalizedViewportRect)
+            .filter(Boolean);
+
+        return rawRects.length
+            ? mergeAdjacentClientRects(rawRects)
+            : [];
+    }
+
+    function entertrainedMeasuredGeometry(word, match, labelMatch) {
+        if (currentSiteAdapter()?.key !== "entertrained" || Number(match?.wordCount) !== 1) {
+            return null;
+        }
+
+        const safeMatchNormalized = String(match?.normalized || "");
+        if (!safeMatchNormalized) {
+            return null;
+        }
+
+        const wordEl = wordRecordElement(word);
+        if (!(wordEl instanceof HTMLElement)) {
+            return null;
+        }
+
+        const safeWordText = String(wordRecordText(word) || "").replace(/\uE000/g, "");
+        if (!safeWordText) {
+            return null;
+        }
+
+        const anchor = labelMatch?.anchor;
+        const rawOffsets = anchor?.type === "substring"
+            ? mapNormalizedOffsetsToRawOffsets(
+                wordRecordText(word),
+                safeMatchNormalized,
+                Number(anchor.start) || 0,
+                Number(anchor.end) || 0
+            )
+            : mapNormalizedOffsetsToRawOffsets(
+                wordRecordText(word),
+                safeMatchNormalized,
+                0,
+                safeMatchNormalized.length
+            );
+        if (!rawOffsets) {
+            return null;
+        }
+
+        const segments = entertrainedLetterSegments(wordEl);
+        if (!segments.length) {
+            return null;
+        }
+
+        const liveSearchText = segments.map((segment) => segment.text).join("");
+        const liveOffsets = liveSearchText.toLocaleLowerCase() === safeWordText.toLocaleLowerCase()
+            ? rawOffsets
+            : mapOriginalOffsetsToLiveOffsets(
+                safeWordText,
+                liveSearchText,
+                rawOffsets.start,
+                rawOffsets.end
+            );
+        if (!liveOffsets) {
+            return null;
+        }
+
+        const matchedSegments = segments
+            .filter((segment) => segment.end > liveOffsets.start && segment.start < liveOffsets.end);
+        const rawClientRects = matchedSegments
+            .flatMap((segment) => Array.from(segment.element.getClientRects()))
+            .map(normalizedViewportRect)
+            .filter(Boolean);
+        const rects = rawClientRects.length
+            ? mergeAdjacentClientRects(rawClientRects)
+            : [];
+        if (!rects.length) {
+            return null;
+        }
+
+        return {
+            rects,
+            rect: rects[0] || null,
+            anchorRect: rects[0] || null,
+            labelHost: matchedSegments[0]?.element || null,
+            outlineHosts: rects.map((rect) => {
+                const hostSegment = matchedSegments.find((segment) => {
+                    const segmentRect = normalizedViewportRect(segment.element.getBoundingClientRect());
+                    if (!segmentRect) {
+                        return false;
+                    }
+
+                    return (
+                        segmentRect.bottom >= rect.top - 2 &&
+                        segmentRect.top <= rect.bottom + 2 &&
+                        segmentRect.right > rect.left - 2 &&
+                        segmentRect.left < rect.right + 2
+                    );
+                });
+
+                return hostSegment?.element || matchedSegments[0]?.element || null;
+            }),
+            renderMode: entertrainedWordViewportRects(wordEl).length > 1 ? "overlay" : "inline"
+        };
+    }
+
+    function entertrainedInlineLabelPlacement(word, match, labelMatch) {
+        if (currentSiteAdapter()?.key !== "entertrained") {
+            return null;
+        }
+
+        const geometry = measuredSubstringGeometry(word, match, labelMatch);
+        const hostElement = geometry?.labelHost instanceof HTMLElement
+            ? geometry.labelHost
+            : null;
+        const anchorRect = normalizedViewportRect(geometry?.anchorRect);
+        if (!hostElement || !anchorRect) {
+            return null;
+        }
+
+        const hostRect = normalizedViewportRect(hostElement.getBoundingClientRect());
+        if (!hostRect || hostRect.width <= 0 || hostRect.height <= 0) {
+            return null;
+        }
+
+        return {
+            hostElement,
+            left: STATE.settings.hint_position === "center"
+                ? anchorRect.left + anchorRect.width / 2 - hostRect.left
+                : 0
+        };
+    }
+
+    function entertrainedInlineOutlinePlacement(record) {
+        if (currentSiteAdapter()?.key !== "entertrained") {
+            return null;
+        }
+
+        const geometry = measuredSubstringGeometry(record?.word, record?.match, record?.labelMatch);
+        const hostElement = geometry?.outlineHosts?.[record?.rectIndex ?? 0];
+        return hostElement instanceof HTMLElement ? hostElement : null;
+    }
+
     function collectRenderableTextSegments(root) {
         if (!(root instanceof HTMLElement)) {
             return [];
@@ -1932,29 +2126,34 @@
 
     function measuredSubstringGeometry(word, match, labelMatch) {
         const cached = cachedMeasurement(word, match, labelMatch);
-        if (cached && cached.value) {
+        if (cached && cached.value !== undefined) {
             return cached.value;
         }
 
-        const range = measuredSubstringRange(word, match, labelMatch);
-        if (!range) {
-            if (cached) {
-                cached.bucket.set(cached.key, null);
+        let geometry = entertrainedMeasuredGeometry(word, match, labelMatch);
+        if (!geometry) {
+            const range = measuredSubstringRange(word, match, labelMatch);
+            if (!range) {
+                if (cached) {
+                    cached.bucket.set(cached.key, null);
+                }
+                return null;
             }
-            return null;
-        }
 
-        const rawClientRects = Array.from(range.getClientRects())
-            .map(normalizedViewportRect)
-            .filter(Boolean);
-        const rects = rawClientRects.length
-            ? mergeAdjacentClientRects(rawClientRects)
-            : [];
-        const boundingRect = normalizedViewportRect(range.getBoundingClientRect());
-        const geometry = {
-            rects,
-            rect: boundingRect || rects[0] || null
-        };
+            const rawClientRects = Array.from(range.getClientRects())
+                .map(normalizedViewportRect)
+                .filter(Boolean);
+            const rects = rawClientRects.length
+                ? mergeAdjacentClientRects(rawClientRects)
+                : [];
+            const boundingRect = normalizedViewportRect(range.getBoundingClientRect());
+            geometry = {
+                rects,
+                rect: boundingRect || rects[0] || null,
+                anchorRect: boundingRect || rects[0] || null,
+                renderMode: "inline"
+            };
+        }
 
         if (cached) {
             cached.bucket.set(cached.key, geometry);
@@ -2078,7 +2277,8 @@
     }
 
     function measuredSubstringViewportRect(word, match, labelMatch) {
-        return measuredSubstringGeometry(word, match, labelMatch)?.rect || null;
+        const geometry = measuredSubstringGeometry(word, match, labelMatch);
+        return geometry?.anchorRect || geometry?.rect || null;
     }
 
     function proportionalHintAnchorOffset(labelMatch, wordRect) {
@@ -2204,11 +2404,13 @@
 
         outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
             const rect = outlineViewportRectForRecord(record);
-            const wordEl = wordRecordElement(record.word);
-            const wordRect = wordRecordRect(record.word, hasActiveAnnotationMeasurementCache());
+            const hostEl = entertrainedInlineOutlinePlacement(record) || wordRecordElement(record.word);
+            const hostRect = hostEl instanceof HTMLElement
+                ? hostEl.getBoundingClientRect()
+                : wordRecordRect(record.word, hasActiveAnnotationMeasurementCache());
             if (
-                !(wordEl instanceof HTMLElement) ||
-                !wordRect ||
+                !(hostEl instanceof HTMLElement) ||
+                !hostRect ||
                 !rect ||
                 rect.width <= 0 ||
                 rect.height <= 0
@@ -2216,12 +2418,12 @@
                 return;
             }
 
-            ensureRelativePositionHost(wordEl);
+            ensureRelativePositionHost(hostEl);
             const outline = createOutlineElement();
-            if (!positionInlineOutline(outline, wordRect, rect)) {
+            if (!positionInlineOutline(outline, hostRect, rect)) {
                 return;
             }
-            wordEl.appendChild(outline);
+            hostEl.appendChild(outline);
         });
     }
 
@@ -2247,28 +2449,94 @@
         });
     }
 
+    function appendOverlayLabel(root, word, match, labelMatch, overlayPosition = null) {
+        if (!(root instanceof HTMLElement)) {
+            return;
+        }
+
+        const label = createHintLabel(
+            labelMatch.entries,
+            matchedOutputTextForLabel(match, labelMatch)
+        );
+        const adapter = currentSiteAdapter();
+        if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
+            label.classList.add("cch-keybr-overlay-extra-spacing");
+        }
+
+        const geometry = measuredSubstringGeometry(word, match, labelMatch);
+        const record = {
+            label,
+            word,
+            match,
+            labelMatch,
+            anchorRect: geometry?.renderMode === "overlay"
+                ? (geometry.anchorRect || geometry.rect || null)
+                : null
+        };
+
+        root.appendChild(label);
+        if (!positionOverlayLabel(record, overlayPosition)) {
+            label.remove();
+            return;
+        }
+
+        STATE.overlayLabels.push(record);
+    }
+
     function annotateInlineMatch(words, startIndex, match, includeDebugSummary = false) {
         const wordEl = wordRecordElement(words[startIndex]);
         if (!(wordEl instanceof HTMLElement)) {
             return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
         }
 
-        ensureRelativePositionHost(wordEl);
+        let inlineRect = null;
+        let preparedInlineHost = false;
 
-        const rect = wordRecordRect(words[startIndex]);
-        if (!rect || rect.width <= 0 || rect.height <= 0) {
-            return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
+        function ensureInlineHost() {
+            if (preparedInlineHost) {
+                return inlineRect;
+            }
+
+            const rect = wordRecordRect(words[startIndex]);
+            if (!rect || rect.width <= 0 || rect.height <= 0) {
+                return null;
+            }
+
+            ensureRelativePositionHost(wordEl);
+            wordEl.classList.add("cch-host");
+            wordEl.dataset.cchAnnotated = "true";
+            inlineRect = rect;
+            preparedInlineHost = true;
+            return inlineRect;
         }
-
-        wordEl.classList.add("cch-host");
-        wordEl.dataset.cchAnnotated = "true";
 
         matchLabels(match).forEach((labelMatch) => {
             appendInlineOutlines(words, startIndex, match, labelMatch);
+
+            const entertrainedPlacement = entertrainedInlineLabelPlacement(
+                words[startIndex],
+                match,
+                labelMatch
+            );
             const label = createHintLabel(
                 labelMatch.entries,
                 matchedOutputTextForLabel(match, labelMatch)
             );
+            if (entertrainedPlacement) {
+                ensureRelativePositionHost(entertrainedPlacement.hostElement);
+                label.style.left = STATE.settings.hint_position === "center"
+                    ? `${entertrainedPlacement.left}px`
+                    : "0px";
+                label.style.top = "0";
+                entertrainedPlacement.hostElement.prepend(label);
+                return;
+            }
+
+            const rect = ensureInlineHost();
+            if (!rect) {
+                return;
+            }
+
             const anchor = hintAnchorOffset(words[startIndex], match, labelMatch, rect);
             label.style.left = STATE.settings.hint_position === "center"
                 ? `${anchor.center}px`
@@ -2293,27 +2561,10 @@
             return includeDebugSummary ? summarizeMatch(words, startIndex, match) : null;
         }
 
-        const adapter = currentSiteAdapter();
         const overlayPosition = overlayPositionFromViewportRect(root, rect);
         matchLabels(match).forEach((labelMatch) => {
             appendOverlayOutlines(root, words, startIndex, match, labelMatch);
-            const label = createHintLabel(
-                labelMatch.entries,
-                matchedOutputTextForLabel(match, labelMatch)
-            );
-            if (adapter?.key === "keybr" && adapter.keybrHintLayout?.() === "extra-spacing") {
-                label.classList.add("cch-keybr-overlay-extra-spacing");
-            }
-
-            const record = {
-                label,
-                word: words[startIndex],
-                match,
-                labelMatch
-            };
-            positionOverlayLabel(record, overlayPosition);
-            root.appendChild(label);
-            STATE.overlayLabels.push(record);
+            appendOverlayLabel(root, words[startIndex], match, labelMatch, overlayPosition);
         });
 
         if (!includeDebugSummary) {
@@ -2531,6 +2782,11 @@
         const totalWords = summaries.reduce((sum, item) => sum + item.wordCount, 0);
         const totalMatches = summaries.reduce((sum, item) => sum + item.matchedCount, 0);
 
+        if (STATE.overlayRoot?.childElementCount) {
+            syncOverlayTypography(STATE.overlayRoot);
+            refreshOverlayTrackingObservers();
+        }
+
         STATE.lastPromptSignature = nextPromptSignature;
 
         if (adapter.key === "keybr") {
@@ -2565,6 +2821,11 @@
                     renderMode
                 );
                 STATE.annotationMeasurementCache = null;
+
+                if (STATE.overlayRoot?.childElementCount) {
+                    syncOverlayTypography(STATE.overlayRoot);
+                    refreshOverlayTrackingObservers();
+                }
 
                 const deferredWordCount = deferredSummaries.reduce((sum, item) => sum + item.wordCount, 0);
                 const deferredMatchCount = deferredSummaries.reduce((sum, item) => sum + item.matchedCount, 0);
