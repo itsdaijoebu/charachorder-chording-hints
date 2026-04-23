@@ -779,6 +779,11 @@ input[type="color"]::-moz-color-swatch {
   transition: opacity 120ms ease, transform 120ms ease;
 }
 
+.tooltipable.tooltipOpenUpwards::after {
+  top: auto;
+  bottom: calc(100% + 2px);
+}
+
 /*.tooltipable:focus-within::after,*/
 .tooltipable:hover::after {
   opacity: 1;

@@ -203,7 +203,7 @@ button.secondary:hover {
 
 .tooltipable.tooltipOpenUpwards::after {
     top: auto;
-    bottom: calc(100% + 8px);
+    bottom: calc(100% + 2px);
 }
 
 .popupThemeControls {

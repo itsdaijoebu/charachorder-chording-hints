@@ -1,276 +1,324 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CharaChorder Chording Hints</title>
-  <link rel="stylesheet" href="theme.css">
-  <link rel="stylesheet" href="options.css">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CharaChorder Chording Hints</title>
+    <link rel="stylesheet" href="theme.css">
+    <link rel="stylesheet" href="options.css">
 </head>
 <body>
-  <main class="page">
+<main class="page">
     <section class="card">
-      <div class="pageHeaderRow">
-        <div>
-          <h1>CharaChorder Chording Hints</h1>
-          <p class="muted">Import a JSON export or sync directly from the device. The saved dictionary powers the on-page chord hints.</p>
-        </div>
-        <div class="themeModeField">
-          <label class="themeToggleRow" for="optionsThemeToggle">
-            <span class="themeToggleText">Light</span>
-            <input id="optionsThemeToggle" type="checkbox" role="switch" aria-label="Toggle dark theme">
-            <span class="themeToggleText">Dark</span>
-          </label>
-          <label class="check themeSystemCheck" for="optionsUseSystemTheme">
-            <input id="optionsUseSystemTheme" type="checkbox">
-            <span>Use system theme</span>
-          </label>
-        </div>
-      </div>
-
-      <p class="muted">Sync from a connected CharaChorder, or import a saved JSON export from disk.</p>
-
-      <div class="importControlStack">
-        <button id="syncDeviceButton" type="button" class="tallButton">Sync chords from device</button>
-
-        <div class="fileImportRow">
-          <button id="importButton" type="button">Import JSON</button>
-          <input id="jsonFile" type="file" accept="application/json,.json">
+        <div class="pageHeaderRow">
+            <div>
+                <h1>CharaChorder Chording Hints</h1>
+                <p class="muted">Import a JSON export or sync directly from the device. The saved dictionary powers the
+                    on-page chord hints.</p>
+            </div>
+            <div class="themeModeField">
+                <label class="themeToggleRow" for="optionsThemeToggle">
+                    <span class="themeToggleText">Light</span>
+                    <input id="optionsThemeToggle" type="checkbox" role="switch" aria-label="Toggle dark theme">
+                    <span class="themeToggleText">Dark</span>
+                </label>
+                <label class="check themeSystemCheck" for="optionsUseSystemTheme">
+                    <input id="optionsUseSystemTheme" type="checkbox">
+                    <span>Use system theme</span>
+                </label>
+            </div>
         </div>
 
-        <div class="actions">
-          <button id="clearButton" type="button" class="secondary">Clear saved dictionary</button>
+        <p class="muted">Sync from a connected CharaChorder, or import a saved JSON export from disk.</p>
+
+        <div class="importControlStack">
+            <button id="syncDeviceButton" type="button" class="tallButton">Sync chords from device</button>
+
+            <div class="fileImportRow">
+                <button id="importButton" type="button">Import JSON</button>
+                <input id="jsonFile" type="file" accept="application/json,.json">
+            </div>
+
+            <div class="actions">
+                <button id="clearButton" type="button" class="secondary">Clear saved dictionary</button>
+            </div>
         </div>
-      </div>
-      <p id="importStatus" class="status"></p>
+        <p id="importStatus" class="status"></p>
     </section>
 
     <section class="card" data-collapsed-default="true">
-      <h2>Saved dictionary</h2>
-      <dl class="meta">
-        <div><dt>Source</dt><dd id="metaSource">—</dd></div>
-        <div><dt>Export version</dt><dd id="metaVersion">—</dd></div>
-        <div><dt>Loaded entries</dt><dd id="metaCount">—</dd></div>
-        <div><dt>Device entry count</dt><dd id="metaDeviceCount">—</dd></div>
-        <div><dt>Saved at</dt><dd id="metaSavedAt">—</dd></div>
-      </dl>
+        <h2>Saved dictionary</h2>
+        <dl class="meta">
+            <div>
+                <dt>Source</dt>
+                <dd id="metaSource">—</dd>
+            </div>
+            <div>
+                <dt>Export version</dt>
+                <dd id="metaVersion">—</dd>
+            </div>
+            <div>
+                <dt>Loaded entries</dt>
+                <dd id="metaCount">—</dd>
+            </div>
+            <div>
+                <dt>Device entry count</dt>
+                <dd id="metaDeviceCount">—</dd>
+            </div>
+            <div>
+                <dt>Saved at</dt>
+                <dd id="metaSavedAt">—</dd>
+            </div>
+        </dl>
 
-      <p id="loadedChordsEmpty" class="muted">No dictionary is currently loaded.</p>
+        <p id="loadedChordsEmpty" class="muted">No dictionary is currently loaded.</p>
 
-      <div id="loadedChordsPanel" hidden>
-        <div class="actions previewToolbar">
-          <button id="saveInputOverrideButton" type="button">Save all edited inputs</button>
-          <button id="revertInputOverrideButton" type="button" class="secondary">Revert all unsaved edits</button>
-          <label class="check inlineCheck tooltipable" for="hideBlankOutputsToggle" data-tooltip="Hides chords without any output - typically compound/dynamic chord starters.">
-            <input id="hideBlankOutputsToggle" type="checkbox" checked>
-            <span>Hide blank outputs</span>
-            <span class="tooltipIcon" aria-hidden="true"></span>
-          </label>
-          <label class="check inlineCheck tooltipable" for="hideNonAlphanumericOutputsToggle" data-tooltip="Hides output that won't be seen in writing, ex. backspace.">
-            <input id="hideNonAlphanumericOutputsToggle" type="checkbox" checked>
-            <span>Hide non-character output</span>
-            <span class="tooltipIcon" aria-hidden="true"></span>
-          </label>
-          <span id="editingStatus" class="muted">Click any input to edit multiple rows before saving.</span>
-        </div>
+        <div id="loadedChordsPanel" hidden>
+            <div class="actions previewToolbar">
+                <button id="saveInputOverrideButton" type="button">Save all edited inputs</button>
+                <button id="revertInputOverrideButton" type="button" class="secondary">Revert all unsaved edits</button>
+                <label class="check inlineCheck tooltipable" for="hideBlankOutputsToggle"
+                       data-tooltip="Hides chords without any output - typically compound/dynamic chord starters.">
+                    <input id="hideBlankOutputsToggle" type="checkbox" checked>
+                    <span>Hide blank outputs</span>
+                    <span class="tooltipIcon" aria-hidden="true"></span>
+                </label>
+                <label class="check inlineCheck tooltipable" for="hideNonAlphanumericOutputsToggle"
+                       data-tooltip="Hides output that won't be seen in writing, ex. backspace.">
+                    <input id="hideNonAlphanumericOutputsToggle" type="checkbox" checked>
+                    <span>Hide non-character output</span>
+                    <span class="tooltipIcon" aria-hidden="true"></span>
+                </label>
+                <span id="editingStatus" class="muted">Click any input to edit multiple rows before saving.</span>
+            </div>
 
-        <div class="tableWrap">
-          <table>
-            <thead>
-              <tr class="searchRow">
-                <th>
-                  <div class="columnSearchField">
-                    <input id="inputSearchBox" type="search" class="columnSearch" placeholder="Search input characters">
-                    <span
-                      class="tooltipable columnSearchTooltip"
-                      data-tooltip="Search chord input. Doesn't care about letter order. Ex: 'chara' and 'aarch' are the same search."
-                      tabindex="0"
-                      aria-label="Input search help"
-                    >
+            <div class="tableWrap">
+                <table>
+                    <thead>
+                    <tr class="searchRow">
+                        <th>
+                            <div class="columnSearchField">
+                                <input id="inputSearchBox" type="search" class="columnSearch"
+                                       placeholder="Search input characters">
+                                <span
+                                        class="tooltipable columnSearchTooltip"
+                                        data-tooltip="Search chord input. Doesn't care about letter order. Ex: 'chara' and 'aarch' are the same search."
+                                        tabindex="0"
+                                        aria-label="Input search help"
+                                >
                       <span class="tooltipIcon" aria-hidden="true"></span>
                     </span>
-                  </div>
-                </th>
-                <th>
-                  <div class="columnSearchField">
-                    <input id="outputSearchBox" type="search" class="columnSearch" placeholder="Search output text">
-                    <span
-                      class="tooltipable columnSearchTooltip"
-                      data-tooltip="Search chord output. Does care about letter order. Ex. 'chara' and 'aarch' are different searches."
-                      tabindex="0"
-                      aria-label="Output search help"
-                    >
+                            </div>
+                        </th>
+                        <th>
+                            <div class="columnSearchField">
+                                <input id="outputSearchBox" type="search" class="columnSearch"
+                                       placeholder="Search output text">
+                                <span
+                                        class="tooltipable columnSearchTooltip"
+                                        data-tooltip="Search chord output. Does care about letter order. Ex. 'chara' and 'aarch' are different searches."
+                                        tabindex="0"
+                                        aria-label="Output search help"
+                                >
                       <span class="tooltipIcon" aria-hidden="true"></span>
                     </span>
-                  </div>
-                </th>
-              </tr>
-              <tr>
-                <th><button id="sortInputButton" type="button" class="sortButton">Input</button></th>
-                <th><button id="sortOutputButton" type="button" class="sortButton">Output</button></th>
-              </tr>
-            </thead>
-            <tbody id="loadedChordsTableBody"></tbody>
-          </table>
-        </div>
+                            </div>
+                        </th>
+                    </tr>
+                    <tr>
+                        <th>
+                            <button id="sortInputButton" type="button" class="sortButton">Input</button>
+                        </th>
+                        <th>
+                            <button id="sortOutputButton" type="button" class="sortButton">Output</button>
+                        </th>
+                    </tr>
+                    </thead>
+                    <tbody id="loadedChordsTableBody"></tbody>
+                </table>
+            </div>
 
-        <div class="paginationBar">
-          <button id="prevPageButton" type="button" class="secondary">Previous</button>
-          <button id="nextPageButton" type="button" class="secondary">Next</button>
-          <label class="pageJumpLabel" for="pageJumpInput">
-            <span>Jump to page</span>
-            <input id="pageJumpInput" type="number" min="1" value="1">
-          </label>
-          <button id="pageJumpButton" type="button" class="secondary">Go</button>
-          <span id="pageStatus" class="muted"></span>
+            <div class="paginationBar">
+                <button id="prevPageButton" type="button" class="secondary">Previous</button>
+                <button id="nextPageButton" type="button" class="secondary">Next</button>
+                <label class="pageJumpLabel" for="pageJumpInput">
+                    <span>Jump to page</span>
+                    <input id="pageJumpInput" type="number" min="1" value="1">
+                </label>
+                <button id="pageJumpButton" type="button" class="secondary">Go</button>
+                <span id="pageStatus" class="muted"></span>
+            </div>
         </div>
-      </div>
 
     </section>
 
     <section class="saveSettingsCard">
-      <div class="actions">
-        <button id="saveSettingsButtonSecondary" type="button">Save settings</button>
-        <button id="returnToDefaultsButtonSecondary" type="button" class="secondary">Return to defaults</button>
-      </div>
+        <div class="actions">
+            <button id="saveSettingsButtonSecondary" type="button">Save settings</button>
+            <button id="returnToDefaultsButtonSecondary" type="button" class="secondary">Return to defaults</button>
+        </div>
     </section>
 
     <section class="card">
-      <h2>Appearance</h2>
-      <div class="field_grid compactFields appearanceGrid">
-        <label class="fieldLabel" for="hintBoxDarkModeColor"><span>Dark mode box color</span><input id="hintBoxDarkModeColor" type="color"></label>
-        <label class="fieldLabel" for="hintTextDarkModeColor"><span>Dark mode text color</span><input id="hintTextDarkModeColor" type="color"></label>
-        <label class="fieldLabel" for="hintBoxDarkModeOpacity"><span>Dark mode box opacity</span><input id="hintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"></label>
-        <label class="fieldLabel" for="hintBoxLightModeColor"><span>Light mode box color</span><input id="hintBoxLightModeColor" type="color"></label>
-        <label class="fieldLabel" for="hintTextLightModeColor"><span>Light mode text color</span><input id="hintTextLightModeColor" type="color"></label>
-        <label class="fieldLabel" for="hintBoxLightModeOpacity"><span>Light mode box opacity</span><input id="hintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
-        <label class="fieldLabel appearanceFullRow" for="hintTextFontSizeValue">
-          <span class="labelWithTooltip tooltipable" data-tooltip="em:&#10;Scales with the surrounding font size.&#10;&#10;px:&#10;Fixed pixel size.&#10;&#10;Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">
+        <h2>Appearance</h2>
+        <div class="field_grid compactFields appearanceGrid">
+            <label class="fieldLabel" for="hintBoxDarkModeColor"><span>Dark mode box color</span><input
+                    id="hintBoxDarkModeColor" type="color"></label>
+            <label class="fieldLabel" for="hintTextDarkModeColor"><span>Dark mode text color</span><input
+                    id="hintTextDarkModeColor" type="color"></label>
+            <label class="fieldLabel" for="hintBoxDarkModeOpacity"><span>Dark mode box opacity</span><input
+                    id="hintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"></label>
+            <label class="fieldLabel" for="hintBoxLightModeColor"><span>Light mode box color</span><input
+                    id="hintBoxLightModeColor" type="color"></label>
+            <label class="fieldLabel" for="hintTextLightModeColor"><span>Light mode text color</span><input
+                    id="hintTextLightModeColor" type="color"></label>
+            <label class="fieldLabel" for="hintBoxLightModeOpacity"><span>Light mode box opacity</span><input
+                    id="hintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
+            <label class="fieldLabel appearanceFullRow" for="hintTextFontSizeValue">
+          <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                data-tooltip="em:&#10;Scales with the surrounding font size.&#10;&#10;px:&#10;Fixed pixel size.&#10;&#10;Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">
             <span>Hint text size</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
-          <div class="inlineFieldPair">
-            <input id="hintTextFontSizeValue" type="number" min="0.1" max="64" step="0.1">
-            <select id="hintTextFontSizeUnit">
-              <option value="em">em</option>
-              <option value="px">px</option>
-            </select>
-          </div>
-        </label>
-        <label class="fieldLabel" for="hintPosition">
-          <span>Hint position</span>
-          <select id="hintPosition">
-            <option value="left">Left aligned</option>
-            <option value="center">Centered</option>
-          </select>
-        </label>
-        <label class="fieldLabel appearanceFullRow" for="hintDisplay">
-          <span class="labelWithTooltip tooltipable" data-tooltip="Show:&#10;Show chord input by default. &#10;&#10;Hide:&#10;Hides chord input by default, but shows it on hover.&#10;&#10;Click any hint box to toggle between display modes.">
+                <div class="inlineFieldPair">
+                    <input id="hintTextFontSizeValue" type="number" min="0.1" max="64" step="0.1">
+                    <select id="hintTextFontSizeUnit">
+                        <option value="em">em</option>
+                        <option value="px">px</option>
+                    </select>
+                </div>
+            </label>
+            <label class="fieldLabel" for="hintPosition">
+                <span>Hint position</span>
+                <select id="hintPosition">
+                    <option value="left">Left aligned</option>
+                    <option value="center">Centered</option>
+                </select>
+            </label>
+            <label class="fieldLabel appearanceFullRow" for="hintDisplay">
+          <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                data-tooltip="Show:&#10;Show chord input by default. &#10;&#10;Hide:&#10;Hides chord input by default, but shows it on hover.&#10;&#10;Click any hint box to toggle between display modes.">
             <span>Hint display</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
-          <select id="hintDisplay">
-            <option value="always">Show by default</option>
-            <option value="hover">Hide by default</option>
-          </select>
-        </label>
-      </div>
-
-      <div class="previewCard">
-        <div class="previewTitle">Live appearance preview</div>
-        <div class="previewGrid">
-          <div class="previewPanel previewPanelDark">
-            <div class="previewCanvas">
-              <div id="hintPreviewWordDark" class="previewWord">
-                <div id="hintPreviewDark" class="previewHint">dark</div>
-                <span class="previewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
-              </div>
-            </div>
-          </div>
-          <div class="previewPanel previewPanelLight">
-            <div class="previewCanvas">
-              <div id="hintPreviewWordLight" class="previewWord">
-                <div id="hintPreviewLight" class="previewHint">light</div>
-                <span class="previewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
-              </div>
-            </div>
-          </div>
+                <select id="hintDisplay">
+                    <option value="always">Show by default</option>
+                    <option value="hover">Hide by default</option>
+                </select>
+            </label>
         </div>
-      </div>
+
+        <div class="previewCard">
+            <div class="previewTitle">Live appearance preview</div>
+            <div class="previewGrid">
+                <div class="previewPanel previewPanelDark">
+                    <div class="previewCanvas">
+                        <div id="hintPreviewWordDark" class="previewWord">
+                            <div id="hintPreviewDark" class="previewHint">dark</div>
+                            <span class="previewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="previewPanel previewPanelLight">
+                    <div class="previewCanvas">
+                        <div id="hintPreviewWordLight" class="previewWord">
+                            <div id="hintPreviewLight" class="previewHint">light</div>
+                            <span class="previewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
     </section>
 
     <section class="card">
-      <h2>Behavior</h2>
-      <div class="field_grid compactFields">
-        <label class="fieldLabel" for="selectionMode">
-          <span>Which matching chord to show</span>
-          <select id="selectionMode">
-            <option value="shortest">Shortest</option>
-            <option value="first">First</option>
-            <option value="all">All</option>
-          </select>
-        </label>
-        <label class="fieldLabel" for="hintCharacterOrderMode">
-          <span class="labelWithTooltip tooltipable" data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
+        <h2>Behavior</h2>
+        <div class="field_grid compactFields">
+            <label class="fieldLabel" for="selectionMode">
+          <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                data-tooltip="Shortest:&#10;Shows the shortest input chord available&#10;&#10;First:&#10;Shows the first valid chord in the dictionary.&#10;&#10;All:&#10;Shows all valid chords.">
+              <span>Which matching chord to show</span>
+              <span class="tooltipIcon" aria-hidden="true"></span>
+            </span>
+                <select id="selectionMode">
+                    <option value="shortest">Shortest</option>
+                    <option value="first">First</option>
+                    <option value="all">All</option>
+                </select>
+            </label>
+            <label class="fieldLabel" for="hintCharacterOrderMode">
+          <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
             <span>Chord input display order</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
-          <select id="hintCharacterOrderMode">
-            <option value="best-match">Best match</option>
-            <option value="charachorder-default">Charachorder default</option>
-          </select>
-        </label>
-        <label class="fieldLabel" for="minimumWordLength">
-          <span class="labelWithTooltip tooltipable" data-tooltip="The minimum length a word or substring needs to be to trigger chord hints.&#10;&#10;Try increasing to improve performance if necessary (since less words need to be accounted for).">
+                <select id="hintCharacterOrderMode">
+                    <option value="best-match">Best match</option>
+                    <option value="charachorder-default">Charachorder default</option>
+                </select>
+            </label>
+            <label class="fieldLabel" for="minimumWordLength">
+          <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                data-tooltip="The minimum length a word or substring needs to be to trigger chord hints.&#10;&#10;Try increasing to improve performance if necessary (since less words need to be accounted for).">
             <span>Minimum word length</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
-          <input id="minimumWordLength" type="number" min="1" max="64" step="1">
-        </label>
+                <input id="minimumWordLength" type="number" min="1" max="64" step="1">
+            </label>
 
-        <label class="check" for="enabled"><input id="enabled" type="checkbox"><span>Enable hints</span></label>
-        <label class="check tooltipable" for="enableSubstringHints" data-tooltip="When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater' in your dictionary&#10;&#10;May affect performance, so disable if causing slowdowns."><input id="enableSubstringHints" type="checkbox"><span>Enable Substring Hints</span><span class="tooltipIcon" aria-hidden="true"></span></label>
-        <label class="check tooltipable" for="showChordableWordOutlines" data-tooltip="Shows outlines around chordable output.&#10;&#10;May impact performance, so disable if causing slowdowns"><input id="showChordableWordOutlines" type="checkbox"><span>Show outlines on chordable words</span><span class="tooltipIcon" aria-hidden="true"></span></label>
-        <label class="check" for="includeArpeggiates"><input id="includeArpeggiates" type="checkbox"><span>Include arpeggiates</span></label>
-        <label class="check" for="includeModifierStyle"><input id="includeModifierStyle" type="checkbox"><span>Include modifier-style outputs</span></label>
-        <label class="check" for="debugLogging"><input id="debugLogging" type="checkbox"><span>Enable debug logging</span></label>
-                <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions" type="checkbox"><span>Show extended special-token descriptions</span></label>
-      </div>
+            <label class="check" for="enabled"><input id="enabled" type="checkbox"><span>Enable hints</span></label>
+            <label class="check tooltipable" for="enableSubstringHints"
+                   data-tooltip="When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater' in your dictionary&#10;&#10;May affect performance, so disable if causing slowdowns."><input
+                    id="enableSubstringHints" type="checkbox"><span>Enable Substring Hints</span><span
+                    class="tooltipIcon" aria-hidden="true"></span></label>
+            <label class="check tooltipable" for="showChordableWordOutlines"
+                   data-tooltip="Shows outlines around chordable output.&#10;&#10;May impact performance, so disable if causing slowdowns"><input
+                    id="showChordableWordOutlines" type="checkbox"><span>Show outlines on chordable words</span><span
+                    class="tooltipIcon" aria-hidden="true"></span></label>
+            <label class="check" for="includeArpeggiates"><input id="includeArpeggiates" type="checkbox"><span>Include arpeggiates</span></label>
+            <label class="check" for="includeModifierStyle"><input id="includeModifierStyle" type="checkbox"><span>Include modifier-style outputs</span></label>
+            <label class="check" for="debugLogging"><input id="debugLogging"
+                                                           type="checkbox"><span>Enable debug logging</span></label>
+            <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions"
+                                                                              type="checkbox"><span>Show extended special-token descriptions</span></label>
+        </div>
     </section>
 
 
     <section class="card">
-      <h2>Keybr-Specific Options</h2>
-      <div class="field_grid compactFields">
-        <label class="fieldLabel appearanceFullRow" for="keybrHintLayout">
-          <span class="labelWithTooltip tooltipable" data-tooltip="Regular Spacing:&#10;Keeps Keybr's normal row spacing, but Keybr's tight rows may cause hints to overlap text on other lines.&#10;&#10;Extra Spacing:&#10;Adds room for hints, but causes Keybr's progress cursor to start at the top of the first word. Recommended.">
+        <h2>Keybr-Specific Options</h2>
+        <div class="field_grid compactFields">
+            <label class="fieldLabel appearanceFullRow" for="keybrHintLayout">
+          <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                data-tooltip="Regular Spacing:&#10;Keeps Keybr's normal row spacing, but Keybr's tight rows may cause hints to overlap text on other lines.&#10;&#10;Extra Spacing:&#10;Adds room for hints, but causes Keybr's progress cursor to start at the top of the first word. Recommended.">
             <span>Keybr hint layout</span>
             <span class="tooltipIcon" aria-hidden="true"></span>
           </span>
-          <select id="keybrHintLayout">
-            <option value="extra-spacing">Extra Spacing</option>
-            <option value="consistent">Regular Spacing</option>
-          </select>
-        </label>
-      </div>
+                <select id="keybrHintLayout">
+                    <option value="extra-spacing">Extra Spacing</option>
+                    <option value="consistent">Regular Spacing</option>
+                </select>
+            </label>
+        </div>
     </section>
     <section class="saveSettingsCard">
-      <div class="actions">
-        <button id="saveSettingsButton" type="button">Save settings</button>
-        <button id="returnToDefaultsButton" type="button" class="secondary">Return to defaults</button>
-        <span id="settingsStatus" class="status"></span>
-      </div>
+        <div class="actions">
+            <button id="saveSettingsButton" type="button">Save settings</button>
+            <button id="returnToDefaultsButton" type="button" class="secondary">Return to defaults</button>
+            <span id="settingsStatus" class="status"></span>
+        </div>
     </section>
 
     <section class="kofiSection">
-      <a class="kofiLink kofiLinkStandalone" href="https://ko-fi.com/itsdaijoebu" target="_blank" rel="noopener noreferrer" aria-label="Support me on Ko-fi">
-        <img src="images/kofi_button.png" alt="Support me on Ko-fi">
-      </a>
+        <a class="kofiLink kofiLinkStandalone" href="https://ko-fi.com/itsdaijoebu" target="_blank"
+           rel="noopener noreferrer" aria-label="Support me on Ko-fi">
+            <img src="images/kofi_button.png" alt="Support me on Ko-fi">
+        </a>
     </section>
-  </main>
+</main>
 
-  <script src="shared.js"></script>
-  <script src="options.js"></script>
+<script src="shared.js"></script>
+<script src="options.js"></script>
 </body>
 </html>
