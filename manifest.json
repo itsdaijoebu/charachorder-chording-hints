@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Chording Hints",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "Shows chord hints for CCOS devices like the CharaChorder on typing training sites to help learn chording libraries faster.",
   "icons": {
     "16": "icons/cch-icon-16.png",

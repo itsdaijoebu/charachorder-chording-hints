@@ -234,9 +234,10 @@ button:hover { filter: brightness(1.03); }
 
 .status {
   margin-top: 12px;
-  min-height: 1.4em;
+  min-height: 1em;
   color: var(--cch-status-error);
 }
+
 
 .check {
   display: flex;
@@ -793,7 +794,30 @@ input[type="color"]::-moz-color-swatch {
 .importControlStack {
   display: flex;
   flex-direction: column;
+  /*gap: 12px;*/
+}
+
+.syncOptionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+}
+
+.syncOptionPanel {
+  display: grid;
+  align-content: start;
   gap: 12px;
+  padding-right: 16px;
+}
+
+.syncOptionPanel h3 {
+  margin: 0;
+}
+
+.syncOptionPanelSeparated {
+  padding-left: 16px;
+  padding-right: 0;
+  border-left: 1px solid var(--cch-card-border);
 }
 
 .fileImportRow {
@@ -839,6 +863,24 @@ input[type="color"]::-moz-color-swatch {
 .tallButton {
   padding-top: 14px;
   padding-bottom: 14px;
+}
+
+@media (max-width: 760px) {
+  .syncOptionGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .syncOptionPanel,
+  .syncOptionPanelSeparated {
+    padding: 0;
+  }
+
+  .syncOptionPanelSeparated {
+    border-left: 0;
+    border-top: 1px solid var(--cch-card-border);
+    padding-top: 16px;
+  }
 }
 
 .previewRowLight {
@@ -896,13 +938,13 @@ input[type="color"]::-moz-color-swatch {
 }
 
 .collapseChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
-  transition: transform 160ms ease;
-}
-
-.collapseChevron::before {
   font-size: 1.5rem;
-  content: "▾";
+  line-height: 1;
+  transition: transform 160ms ease;
 }
 
 .collapsedSection .collapseChevron {

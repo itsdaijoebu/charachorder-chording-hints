@@ -1,6 +1,7 @@
 (() => {
     const STORAGE_KEYS = {
-        settings: "settings"
+        settings: "settings",
+        optionsSyncIntent: "optionsSyncIntent"
     };
 
     const els = {
@@ -425,8 +426,10 @@
     }
 
     els.popupSyncButton.addEventListener("click", async () => {
-        const url = chrome.runtime.getURL("options.html?syncIntent=1");
-        await chrome.tabs.create({ url });
+        await setStorage({
+            [STORAGE_KEYS.optionsSyncIntent]: Date.now()
+        });
+        await chrome.runtime.openOptionsPage();
         window.close();
     });
 

@@ -13,8 +13,6 @@
         <div class="pageHeaderRow">
             <div>
                 <h1>CharaChorder Chording Hints</h1>
-                <p class="muted">Import a JSON export or sync directly from the device. The saved dictionary powers the
-                    on-page chord hints.</p>
             </div>
             <div class="themeModeField">
                 <label class="themeToggleRow" for="optionsThemeToggle">
@@ -29,21 +27,30 @@
             </div>
         </div>
 
-        <p class="muted">Sync from a connected CharaChorder, or import a saved JSON export from disk.</p>
+        <p class="muted">Sync from a connected CharaChorder. JSON import is provided as a fallback in case your version of Chromium doesn't support this for some reason.</p>
 
         <div class="importControlStack">
-            <button id="syncDeviceButton" type="button" class="tallButton">Sync chords from device</button>
+            <div class="syncOptionGrid">
+                <div class="syncOptionPanel">
+                    <h3>Sync from device</h3>
+                    <button id="syncDeviceButton" type="button" class="tallButton">Sync chords directly from device</button>
+                </div>
 
-            <div class="fileImportRow">
-                <button id="importButton" type="button">Import JSON</button>
-                <input id="jsonFile" type="file" accept="application/json,.json">
+                <div class="syncOptionPanel syncOptionPanelSeparated">
+                    <h3>If Syncing Directly Doesn't Work</h3>
+                    <div class="fileImportRow">
+                        <button id="importButton" type="button">Import JSON</button>
+                        <input id="jsonFile" type="file" accept="application/json,.json">
+                    </div>
+                </div>
             </div>
 
+            <p id="importStatus" class="status"></p>
+            
             <div class="actions">
                 <button id="clearButton" type="button" class="secondary">Clear saved dictionary</button>
             </div>
         </div>
-        <p id="importStatus" class="status"></p>
     </section>
 
     <section class="card" data-collapsed-default="true">
@@ -215,7 +222,7 @@
                     <div class="previewCanvas">
                         <div id="hintPreviewWordDark" class="previewWord">
                             <div id="hintPreviewDark" class="previewHint">dark</div>
-                            <span class="previewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
+                            <span class="previewWordText"><span class="previewOutlineSegment">Dark</span></span>
                         </div>
                     </div>
                 </div>
@@ -223,7 +230,7 @@
                     <div class="previewCanvas">
                         <div id="hintPreviewWordLight" class="previewWord">
                             <div id="hintPreviewLight" class="previewHint">light</div>
-                            <span class="previewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
+                            <span class="previewWordText"><span class="previewOutlineSegment">Light</span></span>
                         </div>
                     </div>
                 </div>

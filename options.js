@@ -2,7 +2,8 @@
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
         inputDisplayOverrides: "inputDisplayOverrides",
-        settings: "settings"
+        settings: "settings",
+        optionsSyncIntent: "optionsSyncIntent"
     };
 
     const PAGE_SIZE = 25;
@@ -1883,25 +1884,35 @@
         }
     }
 
-    function consumeSyncIntent() {
+    async function consumeSyncIntent() {
         const url = new URL(window.location.href);
         const wantsSync = url.searchParams.get("syncIntent") === "1";
-        if (!wantsSync) return false;
+        const stored = await getStorage([STORAGE_KEYS.optionsSyncIntent]);
+        const hasStoredSyncIntent = Boolean(stored[STORAGE_KEYS.optionsSyncIntent]);
 
-        url.searchParams.delete("syncIntent");
-        const nextUrl =
-            url.pathname +
-            (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "") +
-            url.hash;
+        if (!wantsSync && !hasStoredSyncIntent) return false;
 
-        history.replaceState(null, "", nextUrl);
+        if (wantsSync) {
+            url.searchParams.delete("syncIntent");
+            const nextUrl =
+                url.pathname +
+                (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "") +
+                url.hash;
+
+            history.replaceState(null, "", nextUrl);
+        }
+
+        if (hasStoredSyncIntent) {
+            await removeStorage([STORAGE_KEYS.optionsSyncIntent]);
+        }
+
         return true;
     }
 
     function showPendingSyncPrompt() {
         setStatus(
             els.importStatus,
-            "Ready to sync. Click “Sync chords from device”."
+            'Ready to sync. Click "Sync chords directly from device" and select your device from the menu.'
         );
 
         els.syncDeviceButton.classList.add("pendingSync");
@@ -2094,6 +2105,7 @@
             const chevron = document.createElement("span");
             chevron.className = "collapseChevron";
             chevron.setAttribute("aria-hidden", "true");
+            chevron.textContent = "▾";
 
             toggle.append(label, chevron);
             heading.replaceWith(toggle);
@@ -2139,10 +2151,24 @@
         refreshMeta(currentDictionary);
         renderLoadedChords(settings);
 
-        if (consumeSyncIntent()) {
+        if (await consumeSyncIntent()) {
             showPendingSyncPrompt();
         }
     }
+
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== "local") return;
+        if (changes[STORAGE_KEYS.settings]?.newValue) {
+            const settings = hydrateSettings(changes[STORAGE_KEYS.settings].newValue);
+            applySettingsToForm(settings);
+            renderLoadedChords(settings);
+        }
+
+        if (!changes[STORAGE_KEYS.optionsSyncIntent]?.newValue) return;
+
+        void removeStorage([STORAGE_KEYS.optionsSyncIntent]).catch(console.error);
+        showPendingSyncPrompt();
+    });
 
     systemThemeQuery.addEventListener("change", () => {
         const preference = themeModeFromControls();
