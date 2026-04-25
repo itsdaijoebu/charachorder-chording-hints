@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Chording Hints",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Shows chord hints for CCOS devices like the CharaChorder on typing training sites to help learn chording libraries faster.",
+  "icons": {
+    "16": "icons/cch-icon-16.png",
+    "32": "icons/cch-icon-32.png",
+    "48": "icons/cch-icon-48.png",
+    "128": "icons/cch-icon-128.png"
+  },
   "permissions": ["storage"],
   "host_permissions": [
     "https://entertrained.app/prompt/*",
@@ -35,10 +41,6 @@
   "action": {
     "default_title": "Chording Hints",
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/cch-icon-16.png",
-      "48": "icons/cch-icon-48.png",
-      "128": "icons/cch-icon-128.png"
-    }
+    "default_icon": "icons/cch-icon-128.png"
   }
 }
