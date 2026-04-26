@@ -527,6 +527,7 @@
         };
 
         merged.enableSubstringHints = Boolean(merged.enableSubstringHints);
+        merged.suppressAffixMatchingInMiddleOfWords = Boolean(merged.suppressAffixMatchingInMiddleOfWords);
         merged.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(merged.minimumWordLength)
             : Math.max(1, Math.floor(Number(merged.minimumWordLength)) || 3);
@@ -1504,15 +1505,40 @@
         });
     }
 
-    function applicableSubstringRefs(candidate, startIndex, endIndex, wordLength) {
+    function isAlphanumericBoundaryCharacter(char) {
+        return /[\p{L}\p{N}]/u.test(String(char || ""));
+    }
+
+    function isBoundaryStart(text, index) {
+        if (index <= 0) {
+            return true;
+        }
+
+        return !isAlphanumericBoundaryCharacter(text[index - 1]);
+    }
+
+    function isBoundaryEnd(text, index) {
+        if (index >= text.length) {
+            return true;
+        }
+
+        return !isAlphanumericBoundaryCharacter(text[index]);
+    }
+
+    function applicableSubstringRefs(candidate, startIndex, endIndex, text) {
         const refs = [];
+        const suppressMidWordAffixMatching = Boolean(STATE.settings.suppressAffixMatchingInMiddleOfWords);
         if (candidate.refsByAffix?.any?.length) {
             refs.push(...candidate.refsByAffix.any);
         }
-        if (startIndex === 0 && candidate.refsByAffix?.prefix?.length) {
+        if (!suppressMidWordAffixMatching && candidate.refsByAffix?.prefix?.length) {
+            refs.push(...candidate.refsByAffix.prefix);
+        } else if (isBoundaryStart(text, startIndex) && candidate.refsByAffix?.prefix?.length) {
             refs.push(...candidate.refsByAffix.prefix);
         }
-        if (endIndex === wordLength && candidate.refsByAffix?.suffix?.length) {
+        if (!suppressMidWordAffixMatching && candidate.refsByAffix?.suffix?.length) {
+            refs.push(...candidate.refsByAffix.suffix);
+        } else if (isBoundaryEnd(text, endIndex) && candidate.refsByAffix?.suffix?.length) {
             refs.push(...candidate.refsByAffix.suffix);
         }
         return refs;
@@ -1633,7 +1659,7 @@
                 }
 
                 const endIndex = matchIndex + candidate.normalized.length;
-                const refs = applicableSubstringRefs(candidate, matchIndex, endIndex, normalizedWord.length);
+                const refs = applicableSubstringRefs(candidate, matchIndex, endIndex, normalizedWord);
                 if (refs.length) {
                     const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
                     if (chosen.length) {

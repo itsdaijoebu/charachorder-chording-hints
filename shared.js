@@ -883,6 +883,7 @@
       includeArpeggiates: false,
       includeModifierStyle: false,
       enableSubstringHints: true,
+      suppressAffixMatchingInMiddleOfWords: false,
       minimumWordLength: normalizeMinimumWordLength(3),
       hintCharacterOrderMode: normalizeHintCharacterOrderMode("best-match"),
       showChordableWordOutlines: true,

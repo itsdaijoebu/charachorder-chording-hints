@@ -279,6 +279,10 @@
                    data-tooltip="When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;Needed to pick up words that have affixes attached to them, ex. 'greater' if you have 'great' but don't have 'greater' in your dictionary&#10;&#10;May affect performance, so disable if causing slowdowns."><input
                     id="enableSubstringHints" type="checkbox"><span>Enable Substring Hints</span><span
                     class="tooltipIcon" aria-hidden="true"></span></label>
+            <label class="check tooltipable" for="suppressAffixMatchingInMiddleOfWords"
+                   data-tooltip="When enabled, affix-only chords match only at the beginning/end of words.&#10;&#10;Prefixes are signalled by having their output remove the trailing space.&#10;&#10;Suffixes are signalled by having their output remove the preceding space.&#10;&#10;Chords that remove both spaces don't matter for this option.">
+                <input id="suppressAffixMatchingInMiddleOfWords" type="checkbox"><span>Suppress affix matching in the middle of words</span><span
+                    class="tooltipIcon" aria-hidden="true"></span></label>
             <label class="check tooltipable" for="showChordableWordOutlines"
                    data-tooltip="Shows outlines around chordable output.&#10;&#10;May impact performance, so disable if causing slowdowns"><input
                     id="showChordableWordOutlines" type="checkbox"><span>Show outlines on chordable words</span><span
