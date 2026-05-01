@@ -1463,103 +1463,165 @@
         return combined;
     }
 
-    async function readSerialResponseLines(reader, timeoutMs = 4000, matchRegex = null, logLabel = "serial") {
-        const decoder = new TextDecoder();
-        const deadline = Date.now() + timeoutMs;
-        let buffer = "";
-        const lines = [];
-
-        console.log(`[CCH serial] [${logLabel}] read loop starting`, {timeoutMs, matchRegex: String(matchRegex || "")});
-
-        while (Date.now() < deadline) {
-            const remaining = Math.max(1, deadline - Date.now());
-            const readPromise = reader.read();
-            const timeoutPromise = new Promise((resolve) => {
-                window.setTimeout(() => resolve({timeout: true}), remaining);
-            });
-
-            const result = await Promise.race([readPromise, timeoutPromise]);
-            if (result?.timeout) {
-                console.log(`[CCH serial] [${logLabel}] read timed out waiting for bytes`);
-                break;
-            }
-
-            const {value, done} = result;
-            if (done) {
-                console.log(`[CCH serial] [${logLabel}] reader returned done=true`);
-                break;
-            }
-
-            if (!value) {
-                console.log(`[CCH serial] [${logLabel}] read returned empty value`);
-                continue;
-            }
-
-            const chunkText = decoder.decode(value, {stream: true});
-            const chunkHex = Array.from(value).map((byte) => byte.toString(16).toUpperCase().padStart(2, "0")).join(" ");
-            console.log(`[CCH serial] [${logLabel}] chunk`, {chunkText, chunkHex, byteLength: value.length});
-
-            buffer += chunkText;
-            const parts = buffer.replaceAll(String.fromCharCode(13), "").split(String.fromCharCode(10));
-            buffer = parts.pop() || "";
-
-            for (const part of parts) {
-                const line = part.trim();
-                if (!line) continue;
-                lines.push(line);
-                console.log(`[CCH serial] [${logLabel}] parsed line`, line);
-            }
-
-            if (matchRegex && lines.some((line) => matchRegex.test(line))) {
-                console.log(`[CCH serial] [${logLabel}] matched expected line`);
-                break;
-            }
-        }
-
-        const tail = buffer.trim();
-        if (tail) {
-            lines.push(tail);
-            console.log(`[CCH serial] [${logLabel}] trailing buffer`, tail);
-        }
-
-        console.log(`[CCH serial] [${logLabel}] final lines`, lines);
-        return lines;
+    function notifySerialSessionWaiters(session) {
+        const waiters = session?.waiters?.splice(0) || [];
+        waiters.forEach((resolve) => resolve());
     }
 
-    async function sendSerialCommand(port, payload, matchRegex, timeoutMs = 4000) {
-        const encoded = new TextEncoder().encode(payload + String.fromCharCode(13, 10));
-        let writer = null;
-        let reader = null;
+    function appendSerialSessionChunk(session, value, flush = false) {
+        if (!session?.decoder) {
+            return;
+        }
 
-        try {
-            writer = port.writable.getWriter();
-            console.log("[CCH serial] sending command", {payload, bytes: Array.from(encoded)});
-            await writer.write(encoded);
-        } finally {
-            if (writer) {
-                try {
-                    writer.releaseLock();
-                } catch (_) {
-                }
+        const chunk = value || new Uint8Array(0);
+        session.buffer += session.decoder.decode(chunk, {stream: !flush});
+        const parts = session.buffer.replaceAll(String.fromCharCode(13), "").split(String.fromCharCode(10));
+        session.buffer = parts.pop() || "";
+
+        let addedLine = false;
+        for (const part of parts) {
+            const line = part.trim();
+            if (!line) continue;
+            session.lines.push(line);
+            addedLine = true;
+        }
+
+        if (flush) {
+            const tail = session.buffer.trim();
+            session.buffer = "";
+            if (tail) {
+                session.lines.push(tail);
+                addedLine = true;
             }
         }
 
-        await sleep(50);
+        if (addedLine) {
+            notifySerialSessionWaiters(session);
+        }
+    }
+
+    async function openSerialSession(port) {
+        const reader = port.readable.getReader();
+        const writer = port.writable.getWriter();
+        const session = {
+            reader,
+            writer,
+            decoder: new TextDecoder(),
+            buffer: "",
+            lines: [],
+            waiters: [],
+            closed: false,
+            readError: null,
+            readTask: null
+        };
+
+        session.readTask = (async () => {
+            try {
+                while (true) {
+                    const {value, done} = await reader.read();
+                    if (done) {
+                        break;
+                    }
+                    if (!value) {
+                        continue;
+                    }
+                    appendSerialSessionChunk(session, value);
+                }
+                appendSerialSessionChunk(session, new Uint8Array(0), true);
+            } catch (error) {
+                session.readError = error;
+            } finally {
+                session.closed = true;
+                notifySerialSessionWaiters(session);
+            }
+        })();
+
+        return session;
+    }
+
+    function waitForSerialSessionSignal(session, timeoutMs) {
+        return new Promise((resolve) => {
+            let settled = false;
+            const waiter = () => {
+                window.clearTimeout(timerId);
+                finish(false);
+            };
+            const finish = (didTimeout) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                resolve(didTimeout);
+            };
+            const timerId = window.setTimeout(() => {
+                const index = session.waiters.indexOf(waiter);
+                if (index >= 0) {
+                    session.waiters.splice(index, 1);
+                }
+                finish(true);
+            }, timeoutMs);
+            session.waiters.push(waiter);
+        });
+    }
+
+    async function readSerialResponseLines(session, startIndex, timeoutMs = 4000, matchRegex = null) {
+        const deadline = Date.now() + timeoutMs;
+
+        while (Date.now() < deadline) {
+            const lines = session.lines.slice(startIndex);
+            if (matchRegex && lines.some((line) => matchRegex.test(line))) {
+                return lines;
+            }
+            if (session.readError) {
+                throw session.readError;
+            }
+            if (session.closed) {
+                return lines;
+            }
+
+            const remaining = Math.max(1, deadline - Date.now());
+            const didTimeout = await waitForSerialSessionSignal(session, remaining);
+            if (didTimeout) {
+                break;
+            }
+        }
+
+        if (session.readError) {
+            throw session.readError;
+        }
+        return session.lines.slice(startIndex);
+    }
+
+    async function sendSerialCommand(session, payload, matchRegex, timeoutMs = 4000) {
+        const encoded = new TextEncoder().encode(payload + String.fromCharCode(13, 10));
+        const startIndex = session.lines.length;
+        await session.writer.write(encoded);
+        return readSerialResponseLines(session, startIndex, timeoutMs, matchRegex);
+    }
+
+    async function closeSerialSessionQuietly(session) {
+        if (!session) {
+            return;
+        }
 
         try {
-            reader = port.readable.getReader();
-            return await readSerialResponseLines(reader, timeoutMs, matchRegex, payload);
-        } finally {
-            if (reader) {
-                try {
-                    await reader.cancel();
-                } catch (_) {
-                }
-                try {
-                    reader.releaseLock();
-                } catch (_) {
-                }
-            }
+            await session.reader?.cancel?.();
+        } catch (_) {
+        }
+
+        try {
+            await session.readTask;
+        } catch (_) {
+        }
+
+        try {
+            session.reader?.releaseLock?.();
+        } catch (_) {
+        }
+
+        try {
+            session.writer?.releaseLock?.();
+        } catch (_) {
         }
     }
 
@@ -1718,6 +1780,7 @@
         }
 
         let port = null;
+        let session = null;
 
         try {
             port = await navigator.serial.requestPort();
@@ -1725,9 +1788,10 @@
             await port.open({baudRate: SERIAL_BAUD_RATE});
             console.log("[CCH serial] port opened for full chordmap sync");
             await sleep(100);
+            session = await openSerialSession(port);
 
             setStatus(els.importStatus, "Fetching chordmap count from connected Charachorder...");
-            const countLines = await sendSerialCommand(port, "CML C0", /^CML\s+C0\b/, SERIAL_COUNT_TIMEOUT_MS);
+            const countLines = await sendSerialCommand(session, "CML C0", /^CML\s+C0\b/, SERIAL_COUNT_TIMEOUT_MS);
             const combinedCountLines = combineSplitCmlLines(countLines);
             console.log("[CCH serial] combined CML C0 lines", combinedCountLines);
             const countLine = combinedCountLines.find((line) => /^CML\s+C0\b/.test(line));
@@ -1740,6 +1804,7 @@
 
             console.log("[CCH serial] chordmap count", entryCount);
             const serialEntries = [];
+            const debugSerialAnalysis = Boolean(els.debugLogging?.checked);
 
             for (let index = 0; index < entryCount; index += 1) {
                 if (index === 0 || index % 25 === 0 || index === entryCount - 1) {
@@ -1748,7 +1813,7 @@
 
                 const responsePattern = new RegExp(`^CML\\s+C1\\s+${index}\\b`);
                 const lines = await sendSerialCommand(
-                    port,
+                    session,
                     `CML C1 ${index}`,
                     responsePattern,
                     SERIAL_ENTRY_TIMEOUT_MS
@@ -1766,23 +1831,24 @@
 
                 const decodedInput = decodeInputHex(parsed.inputHex);
                 const outputCodes = decodeOutputCodesFromHex(parsed.outputHex);
-                const inputAnalysis = analyzePackedInputSlots(decodedInput.packedInputSlots);
-
-                if (inputAnalysis.hasInteriorZeroGap || inputAnalysis.hasNonAsciiCodes) {
-                    console.log("[CCH serial] packed input analysis", {
-                        index: parsed.index,
-                        inputHex: parsed.inputHex,
-                        outputHex: parsed.outputHex,
-                        chainIndex: decodedInput.chainIndex,
-                        packedInputSlots: inputAnalysis.slotDescriptions,
-                        zeroSlotIndices: inputAnalysis.zeroSlotIndices,
-                        clusters: inputAnalysis.clusters,
-                        displayHypotheses: inputAnalysis.displayHypotheses,
-                        serializedActionCodes: decodedInput.serializedActionCodes,
-                        compoundDescriptor: decodedInput.compoundDescriptor,
-                        outputCodes,
-                        visibleOutputText: CCHShared.visibleOutputText(outputCodes)
-                    });
+                if (debugSerialAnalysis) {
+                    const inputAnalysis = analyzePackedInputSlots(decodedInput.packedInputSlots);
+                    if (inputAnalysis.hasInteriorZeroGap || inputAnalysis.hasNonAsciiCodes) {
+                        console.log("[CCH serial] packed input analysis", {
+                            index: parsed.index,
+                            inputHex: parsed.inputHex,
+                            outputHex: parsed.outputHex,
+                            chainIndex: decodedInput.chainIndex,
+                            packedInputSlots: inputAnalysis.slotDescriptions,
+                            zeroSlotIndices: inputAnalysis.zeroSlotIndices,
+                            clusters: inputAnalysis.clusters,
+                            displayHypotheses: inputAnalysis.displayHypotheses,
+                            serializedActionCodes: decodedInput.serializedActionCodes,
+                            compoundDescriptor: decodedInput.compoundDescriptor,
+                            outputCodes,
+                            visibleOutputText: CCHShared.visibleOutputText(outputCodes)
+                        });
+                    }
                 }
 
                 serialEntries.push({
@@ -1814,6 +1880,7 @@
                 charaVersion: null
             });
         } finally {
+            await closeSerialSessionQuietly(session);
             await closePortQuietly(port);
         }
     }
@@ -1823,7 +1890,7 @@
             [STORAGE_KEYS.parsedDictionary]: parsedDictionary,
             [STORAGE_KEYS.inputDisplayOverrides]: {}
         });
-        currentRawDictionary = hydrateDictionary(parsedDictionary);
+        currentRawDictionary = parsedDictionary;
         inputDisplayOverrides = {};
         expandedEditorRows = new Set();
         draftInputEdits = {};

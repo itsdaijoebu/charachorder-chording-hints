@@ -573,6 +573,37 @@
     };
   }
 
+  function isHydratedEntry(entry) {
+    return Boolean(
+      entry &&
+      typeof entry === "object" &&
+      Array.isArray(entry.inputCodes) &&
+      Array.isArray(entry.inputSegments) &&
+      Array.isArray(entry.inputTokens) &&
+      Array.isArray(entry.outputCodes) &&
+      typeof entry.rawInput === "string" &&
+      typeof entry.outputText === "string" &&
+      typeof entry.normalizedOutput === "string" &&
+      entry.userFlags &&
+      typeof entry.userFlags === "object" &&
+      entry.flags &&
+      typeof entry.flags === "object"
+    );
+  }
+
+  function isHydratedParsedDictionary(dictionary) {
+    return Boolean(
+      dictionary &&
+      typeof dictionary === "object" &&
+      Array.isArray(dictionary.entries) &&
+      dictionary.entries.every((entry) => isHydratedEntry(entry)) &&
+      dictionary.byNormalizedOutput &&
+      typeof dictionary.byNormalizedOutput === "object" &&
+      Number.isFinite(dictionary.entryCount) &&
+      Number.isFinite(dictionary.deviceEntryCount)
+    );
+  }
+
   function normalizeChordPair(rawChord) {
     if (Array.isArray(rawChord) && rawChord.length >= 2) {
       const [rawInputValue, rawOutputValue] = rawChord;
@@ -647,6 +678,10 @@
   function hydrateParsedDictionary(dictionary) {
     if (!dictionary || typeof dictionary !== "object") {
       return null;
+    }
+
+    if (isHydratedParsedDictionary(dictionary)) {
+      return dictionary;
     }
 
     const entries = Array.isArray(dictionary.entries)
@@ -733,32 +768,58 @@
     if (!hydratedDictionary) return null;
 
     const safeOverrides = overrides && typeof overrides === "object" ? overrides : {};
-    const entries = hydratedDictionary.entries.map((entry) => {
-      const overrideSegments = safeOverrides[String(entry.index)] ?? safeOverrides[entry.index];
-      if (!Array.isArray(overrideSegments)) {
-        return entry;
+    const overrideKeys = Object.keys(safeOverrides)
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value));
+
+    if (!overrideKeys.length) {
+      return hydratedDictionary;
+    }
+
+    let entries = null;
+    const arrayIndexByEntryIndex = new Map();
+    hydratedDictionary.entries.forEach((entry, arrayIndex) => {
+      arrayIndexByEntryIndex.set(entry?.index, arrayIndex);
+    });
+
+    overrideKeys.forEach((entryIndex) => {
+      const arrayIndex = arrayIndexByEntryIndex.get(entryIndex);
+      const baseEntry = Number.isFinite(arrayIndex) ? hydratedDictionary.entries[arrayIndex] : null;
+      const overrideSegments = safeOverrides[String(entryIndex)] ?? safeOverrides[entryIndex];
+      if (!baseEntry || !Array.isArray(overrideSegments)) {
+        return;
       }
 
-      return buildEntry({
-        index: entry.index,
-        inputCodes: entry.inputCodes,
-        inputSegments: buildOverrideSegments(entry, overrideSegments),
-        outputCodes: entry.outputCodes,
-        packedInputCodes: entry.packedInputCodes,
-        inputHex: entry.inputHex,
-        outputHex: entry.outputHex,
-        status: entry.status,
-        userFlags: entry.userFlags
+      if (!entries) {
+        entries = hydratedDictionary.entries.slice();
+      }
+
+      entries[arrayIndex] = buildEntry({
+        index: baseEntry.index,
+        inputCodes: baseEntry.inputCodes,
+        inputSegments: buildOverrideSegments(baseEntry, overrideSegments),
+        outputCodes: baseEntry.outputCodes,
+        packedInputCodes: baseEntry.packedInputCodes,
+        inputHex: baseEntry.inputHex,
+        outputHex: baseEntry.outputHex,
+        status: baseEntry.status,
+        userFlags: baseEntry.userFlags
       });
     });
 
-    return buildParsedDictionary({
-      entries,
+    if (!entries) {
+      return hydratedDictionary;
+    }
+
+    return {
       source: hydratedDictionary.source,
       charaVersion: hydratedDictionary.charaVersion,
+      entryCount: hydratedDictionary.entryCount,
       deviceEntryCount: hydratedDictionary.deviceEntryCount,
+      entries,
+      byNormalizedOutput: hydratedDictionary.byNormalizedOutput,
       savedAt: hydratedDictionary.savedAt
-    });
+    };
   }
 
   function normalizeTokenForLookup(text) {
