@@ -105,7 +105,9 @@
         exportNonAlphanumericMode: document.getElementById("exportNonAlphanumericMode"),
         exportRespectExportable: document.getElementById("exportRespectExportable"),
         exportWordsOutput: document.getElementById("exportWordsOutput"),
-        copyExportWordsButton: document.getElementById("copyExportWordsButton")
+        copyExportWordsButton: document.getElementById("copyExportWordsButton"),
+        exportTextFileButton: document.getElementById("exportTextFileButton"),
+        exportCsvButton: document.getElementById("exportCsvButton")
     };
 
     const SERIAL_OUTPUT_ACTION_LABELS = {
@@ -685,8 +687,44 @@
     }
 
     function renderExportWords() {
-        els.exportWordsOutput.value = exportedWordsForCurrentDictionary().join(" ");
-        els.copyExportWordsButton.disabled = !els.exportWordsOutput.value;
+        const exportedWords = exportedWordsForCurrentDictionary();
+        const hasExportWords = exportedWords.length > 0;
+        els.exportWordsOutput.value = exportedWords.join(" ");
+        els.copyExportWordsButton.disabled = !hasExportWords;
+        els.exportTextFileButton.disabled = !hasExportWords;
+        els.exportCsvButton.disabled = !hasExportWords;
+    }
+
+    function downloadBlob(filename, content, mimeType) {
+        const blob = new Blob([content], {type: mimeType});
+        const blobUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(blobUrl);
+    }
+
+    function exportWordsToTextFile() {
+        downloadBlob("chordable-words.txt", els.exportWordsOutput.value || "", "text/plain;charset=utf-8");
+        setStatus(els.importStatus, "Exported chordable words to text file.");
+    }
+
+    function csvEscape(value) {
+        const text = String(value ?? "");
+        if (!/[",\r\n]/.test(text)) {
+            return text;
+        }
+        return `"${text.replace(/"/g, "\"\"")}"`;
+    }
+
+    function exportWordsToCsvFile() {
+        const rows = exportedWordsForCurrentDictionary();
+        const csvContent = rows.map((word) => csvEscape(word)).join("\r\n");
+        downloadBlob("chordable-words.csv", csvContent, "text/csv;charset=utf-8");
+        setStatus(els.importStatus, "Exported chordable words to CSV.");
     }
 
     async function copyExportWordsToClipboard() {
@@ -2517,6 +2555,14 @@
 
     els.copyExportWordsButton.addEventListener("click", () => {
         void copyExportWordsToClipboard();
+    });
+
+    els.exportTextFileButton.addEventListener("click", () => {
+        exportWordsToTextFile();
+    });
+
+    els.exportCsvButton.addEventListener("click", () => {
+        exportWordsToCsvFile();
     });
 
     els.inputSearchBox.addEventListener("input", () => {

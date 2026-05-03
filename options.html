@@ -147,7 +147,7 @@
                                     <span>Exportable?</span>
                                 </label>
                                 <span class="tooltipable columnSearchTooltip"
-                                      data-tooltip="Choose whether each saved word should be included in the export list. Use the checkbox here to turn them all on or off at once."
+                                      data-tooltip="Choose whether to include outputs in the export list."
                                       tabindex="0"
                                       aria-label="Exportable help">
                                     <span class="tooltipIcon" aria-hidden="true"></span>
@@ -174,12 +174,12 @@
 
     </section>
 
-    <section class="card">
+    <section class="card" data-collapsed-default="true">
         <h2>Export Chordable Words</h2>
         <div class="exportControls">
             <label class="fieldLabel exportThresholdField" for="minimumExportLength">
                 <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
-                      data-tooltip="Only include output that is at least this long. For example, 2 leaves out single-letter output such as 'a'.">
+                      data-tooltip="Minimum length for output to be included.&#10;Ex. 2 leaves out single-letter outputs such as 'a'.">
                     <span>Minimum length:</span>
                     <span class="tooltipIcon" aria-hidden="true"></span>
                 </span>
@@ -203,7 +203,7 @@
             </label>
 
             <label class="check tooltipable" for="exportRespectExportable"
-                   data-tooltip="When this is on, the export list follows each row's Exportable setting. When it is off, the export ignores those row checkboxes.">
+                   data-tooltip="Enabled:&#10;The export list follows the Exportable? setting in the Saved Dictionary.&#10;&#10;Disabled:&#10;All outputs are fair game, subject to the filters here.">
                 <input id="exportRespectExportable" type="checkbox" checked>
                 <span>Respect &quot;Exportable?&quot;</span>
                 <span class="tooltipIcon" aria-hidden="true"></span>
@@ -213,6 +213,10 @@
         <div class="exportFieldWrap">
             <button id="copyExportWordsButton" type="button" class="iconButton exportCopyButton" aria-label="Copy export words" title="Copy export words"></button>
             <textarea id="exportWordsOutput" class="exportWordsOutput" readonly spellcheck="false" placeholder="No chordable words to export yet."></textarea>
+            <div class="actions exportDownloadActions">
+                <button id="exportTextFileButton" type="button" class="secondary">Export to text file</button>
+                <button id="exportCsvButton" type="button" class="secondary">Export to csv</button>
+            </div>
         </div>
     </section>
 

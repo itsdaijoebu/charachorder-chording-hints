@@ -1117,6 +1117,11 @@ input[type="color"]::-moz-color-swatch {
   overflow: auto;
 }
 
+.exportDownloadActions {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
 .iconButton {
   width: 36px;
   height: 36px;
