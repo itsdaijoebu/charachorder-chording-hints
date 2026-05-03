@@ -161,6 +161,21 @@ button.secondary:hover {
     background: var(--secondary-hover);
 }
 
+.popupResetButtonConfirming {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+    animation: cchPendingFocusPulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes cchPendingFocusPulse {
+    from {
+        outline-offset: 2px;
+    }
+    to {
+        outline-offset: 4px;
+    }
+}
+
 .field_grid {
     display: grid;
     gap: 12px;

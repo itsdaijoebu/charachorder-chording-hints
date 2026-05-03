@@ -57,6 +57,11 @@
     let exportRespectExportable = DEFAULT_EXPORT_FILTER_SETTINGS.exportRespectExportable;
     let activeTab = "appearance";
     let saveResetTimer = null;
+    let exportDataLoaded = false;
+    let exportDataLoadingPromise = null;
+    let resetConfirmTimer = null;
+    let resetConfirmationArmed = false;
+    let resetConfirmationCleanup = null;
 
     function getStorage(keys) {
         return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -290,6 +295,107 @@
         }, 2000);
     }
 
+    function setExportControlsDisabled(disabled) {
+        const isDisabled = Boolean(disabled);
+        els.popupMinimumExportLength.disabled = isDisabled;
+        els.popupExportNonAlphanumericMode.disabled = isDisabled;
+        els.popupExportRespectExportable.disabled = isDisabled;
+        els.popupCopyExportWordsButton.disabled = isDisabled;
+        els.popupExportTextFileButton.disabled = isDisabled;
+        els.popupExportCsvButton.disabled = isDisabled;
+    }
+
+    function initializeExportTabState() {
+        setExportControlsDisabled(true);
+        els.popupExportWordsOutput.value = "";
+        els.popupExportWordsOutput.placeholder = "Open this tab to load chordable words.";
+    }
+
+    async function ensureExportDataLoaded() {
+        if (exportDataLoaded) {
+            return;
+        }
+
+        if (exportDataLoadingPromise) {
+            await exportDataLoadingPromise;
+            return;
+        }
+
+        exportDataLoadingPromise = (async () => {
+            const stored = await getStorage([
+                STORAGE_KEYS.parsedDictionary,
+                STORAGE_KEYS.exportWordPreferences,
+                STORAGE_KEYS.exportFilterSettings
+            ]);
+
+            currentDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
+            exportWordPreferences = CCHShared.normalizeExportWordPreferences(stored[STORAGE_KEYS.exportWordPreferences]);
+            exportWordPreferences = CCHShared.pruneExportWordPreferences(exportWordPreferences, currentDictionary);
+            applyExportFilterSettings(stored[STORAGE_KEYS.exportFilterSettings]);
+            renderExportWords();
+            exportDataLoaded = true;
+        })();
+
+        try {
+            await exportDataLoadingPromise;
+        } finally {
+            exportDataLoadingPromise = null;
+        }
+    }
+
+    function clearResetConfirmation() {
+        if (resetConfirmationCleanup) {
+            resetConfirmationCleanup();
+            resetConfirmationCleanup = null;
+        }
+        if (resetConfirmTimer) {
+            window.clearTimeout(resetConfirmTimer);
+            resetConfirmTimer = null;
+        }
+        resetConfirmationArmed = false;
+        els.popupResetButton.textContent = "Revert to defaults";
+        els.popupResetButton.classList.remove("popupResetButtonConfirming");
+    }
+
+    function armResetConfirmation() {
+        if (resetConfirmTimer) {
+            window.clearTimeout(resetConfirmTimer);
+        }
+        resetConfirmationArmed = true;
+        els.popupResetButton.textContent = "Click to confirm reset";
+        els.popupResetButton.classList.add("popupResetButtonConfirming");
+        els.popupResetButton.focus();
+
+        const clearPrompt = () => {
+            clearResetConfirmation();
+        };
+
+        const onPointerDown = (event) => {
+            if (!els.popupResetButton.contains(event.target)) {
+                clearPrompt();
+            }
+        };
+
+        const onFocusIn = (event) => {
+            if (!els.popupResetButton.contains(event.target)) {
+                clearPrompt();
+            }
+        };
+
+        document.addEventListener("pointerdown", onPointerDown, true);
+        document.addEventListener("focusin", onFocusIn, true);
+        els.popupResetButton.addEventListener("click", clearPrompt, {once: true});
+        resetConfirmationCleanup = () => {
+            document.removeEventListener("pointerdown", onPointerDown, true);
+            document.removeEventListener("focusin", onFocusIn, true);
+            els.popupResetButton.removeEventListener("click", clearPrompt);
+        };
+
+        resetConfirmTimer = window.setTimeout(() => {
+            clearResetConfirmation();
+        }, 5000);
+    }
+
     function applySettingsToForm(settings) {
         syncThemeControls(settings.themeMode || "system");
         applyPopupTheme(settings.themeMode || "system");
@@ -389,6 +495,10 @@
         const exportedWords = exportedWordsForCurrentDictionary();
         const hasWords = exportedWords.length > 0;
         els.popupExportWordsOutput.value = CCHShared.buildExportWordsText(exportedWords);
+        els.popupExportWordsOutput.placeholder = hasWords
+            ? ""
+            : "No chordable words to export yet.";
+        setExportControlsDisabled(false);
         els.popupCopyExportWordsButton.disabled = !hasWords;
         els.popupExportTextFileButton.disabled = !hasWords;
         els.popupExportCsvButton.disabled = !hasWords;
@@ -450,6 +560,29 @@
         els.popupChordableWordsPanel.hidden = showingAppearance;
     }
 
+    async function openTab(tabName) {
+        switchTab(tabName);
+        if (activeTab !== "chordable-words") {
+            return;
+        }
+
+        if (!exportDataLoaded) {
+            els.popupExportWordsOutput.value = "";
+            els.popupExportWordsOutput.placeholder = "Loading chordable words...";
+            setExportControlsDisabled(true);
+        }
+
+        try {
+            await ensureExportDataLoaded();
+        } catch (error) {
+            console.error(error);
+            setExportControlsDisabled(true);
+            els.popupExportWordsOutput.value = "";
+            els.popupExportWordsOutput.placeholder = "Failed to load chordable words.";
+            setStatus("Failed to load chordable words.", true);
+        }
+    }
+
     function updateEnabledButton(enabled) {
         els.popupEnabledButton.dataset.enabled = enabled ? "true" : "false";
         els.popupEnabledButton.setAttribute("aria-pressed", enabled ? "true" : "false");
@@ -461,23 +594,15 @@
     }
 
     async function loadInitialState() {
-        const stored = await getStorage([
-            STORAGE_KEYS.settings,
-            STORAGE_KEYS.parsedDictionary,
-            STORAGE_KEYS.exportWordPreferences,
-            STORAGE_KEYS.exportFilterSettings
-        ]);
+        const stored = await getStorage([STORAGE_KEYS.settings]);
         draftSettings = hydrateSettings(stored[STORAGE_KEYS.settings]);
-        currentDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
-        exportWordPreferences = CCHShared.normalizeExportWordPreferences(stored[STORAGE_KEYS.exportWordPreferences]);
-        exportWordPreferences = CCHShared.pruneExportWordPreferences(exportWordPreferences, currentDictionary);
-        applyExportFilterSettings(stored[STORAGE_KEYS.exportFilterSettings]);
         applySettingsToForm(draftSettings);
-        renderExportWords();
+        initializeExportTabState();
         switchTab("appearance");
     }
 
     async function saveThemeModePreference(themeMode) {
+        clearResetConfirmation();
         const nextThemeMode = themeMode || "system";
         syncThemeControls(nextThemeMode);
         applyPopupTheme(nextThemeMode);
@@ -504,6 +629,7 @@
     }
 
     async function saveEnabledPreference(enabled) {
+        clearResetConfirmation();
         const nextEnabled = Boolean(enabled);
         updateEnabledButton(nextEnabled);
 
@@ -530,6 +656,7 @@
     }
 
     async function saveSettings() {
+        clearResetConfirmation();
         try {
             draftSettings = currentSettingsFromForm();
             applyPopupTheme(draftSettings.themeMode || "system");
@@ -543,15 +670,21 @@
     }
 
     async function resetSettings() {
-        const confirmed = window.confirm("Return all popup settings to their defaults?");
-        if (!confirmed) return;
+        if (!resetConfirmationArmed) {
+            armResetConfirmation();
+            return;
+        }
+
+        clearResetConfirmation();
         try {
             draftSettings = hydrateSettings(CCHShared.defaultSettings());
             const defaultExportFilterSettings = CCHShared.hydrateExportFilterSettings(DEFAULT_EXPORT_FILTER_SETTINGS);
             applySettingsToForm(draftSettings);
-            applyExportFilterSettings(defaultExportFilterSettings);
             applyPopupTheme(draftSettings.themeMode || "system");
-            renderExportWords();
+            if (exportDataLoaded) {
+                applyExportFilterSettings(defaultExportFilterSettings);
+                renderExportWords();
+            }
             await setStorage({
                 [STORAGE_KEYS.settings]: draftSettings,
                 [STORAGE_KEYS.exportFilterSettings]: defaultExportFilterSettings
@@ -587,8 +720,12 @@
 
     els.popupThemeToggle.addEventListener("change", handleThemeControlsChanged);
     els.popupUseSystemTheme.addEventListener("change", handleThemeControlsChanged);
-    els.popupAppearanceTab.addEventListener("click", () => switchTab("appearance"));
-    els.popupChordableWordsTab.addEventListener("click", () => switchTab("chordable-words"));
+    els.popupAppearanceTab.addEventListener("click", () => {
+        void openTab("appearance");
+    });
+    els.popupChordableWordsTab.addEventListener("click", () => {
+        void openTab("chordable-words");
+    });
 
     [
         els.popupHintBoxDarkModeColor,

@@ -624,6 +624,11 @@
         els.exportCsvButton.disabled = !hasExportWords;
     }
 
+    function renderExportSection() {
+        updateExportableHeaderCheckbox();
+        renderExportWords();
+    }
+
     function downloadBlob(filename, content, mimeType) {
         const blob = new Blob([content], {type: mimeType});
         const blobUrl = URL.createObjectURL(blob);
@@ -959,6 +964,7 @@
             [String(exportKey ?? "")]: Boolean(enabled)
         };
         renderLoadedChords(currentSettingsFromForm());
+        renderExportSection();
         void setStorage({[STORAGE_KEYS.exportWordPreferences]: exportWordPreferences}).catch(console.error);
     }
 
@@ -978,6 +984,7 @@
 
         exportWordPreferences = nextPreferences;
         renderLoadedChords(currentSettingsFromForm());
+        renderExportSection();
         void setStorage({[STORAGE_KEYS.exportWordPreferences]: exportWordPreferences}).catch(console.error);
     }
 
@@ -986,8 +993,6 @@
 
         updateSortButtonLabels();
         updateEditingControls();
-        updateExportableHeaderCheckbox();
-        renderExportWords();
 
         if (!entries.length) {
             els.loadedChordsEmpty.hidden = false;
@@ -2060,6 +2065,7 @@
         applyCurrentDictionary();
         refreshMeta(currentDictionary);
         renderLoadedChords(currentSettingsFromForm());
+        renderExportSection();
         setStatus(els.importStatus, successMessage);
     }
 
@@ -2189,6 +2195,7 @@
             currentPage = 1;
             refreshMeta(null);
             renderLoadedChords(currentSettingsFromForm());
+            renderExportSection();
             setStatus(els.importStatus, "Cleared saved dictionary.");
         } finally {
             setBusy(false);
@@ -2294,6 +2301,7 @@
                 [STORAGE_KEYS.exportFilterSettings]: defaultExportFilterSettings
             });
             renderLoadedChords(defaults);
+            renderExportSection();
             setStatus(els.settingsStatus, "Settings returned to defaults.");
         } catch (error) {
             console.error(error);
@@ -2399,6 +2407,7 @@
         applySettingsToForm(settings);
         refreshMeta(currentDictionary);
         renderLoadedChords(settings);
+        renderExportSection();
 
         if (await consumeSyncIntent()) {
             showPendingSyncPrompt();
@@ -2415,7 +2424,7 @@
 
         if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.exportFilterSettings)) {
             applyExportFilterSettings(changes[STORAGE_KEYS.exportFilterSettings].newValue);
-            renderLoadedChords(currentSettingsFromForm());
+            renderExportSection();
         }
 
         if (!changes[STORAGE_KEYS.optionsSyncIntent]?.newValue) return;
@@ -2473,7 +2482,7 @@
             exportNonAlphanumericMode,
             exportRespectExportable
         }).minimumExportLength;
-        renderLoadedChords(currentSettingsFromForm());
+        renderExportSection();
         saveExportFilterSettingsQuietly();
     });
 
@@ -2484,7 +2493,7 @@
             exportRespectExportable
         }).minimumExportLength;
         els.minimumExportLength.value = String(minimumExportLength);
-        renderLoadedChords(currentSettingsFromForm());
+        renderExportSection();
         saveExportFilterSettingsQuietly();
     });
 
@@ -2495,13 +2504,13 @@
             exportRespectExportable
         }).exportNonAlphanumericMode;
         els.exportNonAlphanumericMode.value = exportNonAlphanumericMode;
-        renderLoadedChords(currentSettingsFromForm());
+        renderExportSection();
         saveExportFilterSettingsQuietly();
     });
 
     els.exportRespectExportable.addEventListener("change", () => {
         exportRespectExportable = els.exportRespectExportable.checked;
-        renderLoadedChords(currentSettingsFromForm());
+        renderExportSection();
         saveExportFilterSettingsQuietly();
     });
 
