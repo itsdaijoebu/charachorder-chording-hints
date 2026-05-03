@@ -544,6 +544,7 @@
                 .map((token) => {
                     if (token?.type === "char") return token.char;
                     if (token?.type === "special" && token.key === "spacebar") return " ";
+                    if (token?.type === "special" && token.key === "hyperspace") return " ";
                     return "";
                 })
                 .join("");

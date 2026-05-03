@@ -439,12 +439,22 @@
       .join(INPUT_SEGMENT_SEPARATOR);
   }
 
+  function visibleOutputCharacterForCode(code) {
+    if (code === 545) {
+      return " ";
+    }
+
+    if (code >= 32 && code <= 126) {
+      return String.fromCharCode(code);
+    }
+
+    return "";
+  }
+
   function visibleOutputText(outputCodes) {
     const chars = [];
     for (const code of Array.isArray(outputCodes) ? outputCodes : []) {
-      if (code >= 32 && code <= 126) {
-        chars.push(String.fromCharCode(code));
-      }
+      chars.push(visibleOutputCharacterForCode(code));
     }
     return chars.join("");
   }
@@ -604,6 +614,18 @@
     );
   }
 
+  function hydratedDictionaryNeedsRebuild(dictionary) {
+    if (!isHydratedParsedDictionary(dictionary)) {
+      return false;
+    }
+
+    return dictionary.entries.some((entry) => {
+      const outputCodes = Array.isArray(entry?.outputCodes) ? entry.outputCodes : [];
+      const outputText = visibleOutputText(outputCodes);
+      return entry.outputText !== outputText || entry.normalizedOutput !== normalizeOutputKey(outputText);
+    });
+  }
+
   function normalizeChordPair(rawChord) {
     if (Array.isArray(rawChord) && rawChord.length >= 2) {
       const [rawInputValue, rawOutputValue] = rawChord;
@@ -680,7 +702,7 @@
       return null;
     }
 
-    if (isHydratedParsedDictionary(dictionary)) {
+    if (isHydratedParsedDictionary(dictionary) && !hydratedDictionaryNeedsRebuild(dictionary)) {
       return dictionary;
     }
 
