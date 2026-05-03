@@ -1,8 +1,12 @@
 (() => {
     const STORAGE_KEYS = {
+        parsedDictionary: "parsedDictionary",
+        exportWordPreferences: "exportWordPreferences",
+        exportFilterSettings: "exportFilterSettings",
         settings: "settings",
         optionsSyncIntent: "optionsSyncIntent"
     };
+    const DEFAULT_EXPORT_FILTER_SETTINGS = CCHShared.defaultExportFilterSettings();
 
     const els = {
         popupSyncButton: document.getElementById("popupSyncButton"),
@@ -30,12 +34,28 @@
         popupLightPreviewWord: document.getElementById("popupLightPreviewWord"),
         popupDarkPreviewWord: document.getElementById("popupDarkPreviewWord"),
         popupEnabledButton: document.getElementById("popupEnabledButton"),
-        // popupEnabledButtonLabel: document.getElementById("popupEnabledButtonLabel")
+        popupAppearanceTab: document.getElementById("popupAppearanceTab"),
+        popupChordableWordsTab: document.getElementById("popupChordableWordsTab"),
+        popupAppearancePanel: document.getElementById("popupAppearancePanel"),
+        popupChordableWordsPanel: document.getElementById("popupChordableWordsPanel"),
+        popupMinimumExportLength: document.getElementById("popupMinimumExportLength"),
+        popupExportNonAlphanumericMode: document.getElementById("popupExportNonAlphanumericMode"),
+        popupExportRespectExportable: document.getElementById("popupExportRespectExportable"),
+        popupExportWordsOutput: document.getElementById("popupExportWordsOutput"),
+        popupCopyExportWordsButton: document.getElementById("popupCopyExportWordsButton"),
+        popupExportTextFileButton: document.getElementById("popupExportTextFileButton"),
+        popupExportCsvButton: document.getElementById("popupExportCsvButton")
     };
 
     const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
     let draftSettings = hydrateSettings(CCHShared.defaultSettings());
+    let currentDictionary = null;
+    let exportWordPreferences = {};
+    let minimumExportLength = DEFAULT_EXPORT_FILTER_SETTINGS.minimumExportLength;
+    let exportNonAlphanumericMode = DEFAULT_EXPORT_FILTER_SETTINGS.exportNonAlphanumericMode;
+    let exportRespectExportable = DEFAULT_EXPORT_FILTER_SETTINGS.exportRespectExportable;
+    let activeTab = "appearance";
     let saveResetTimer = null;
 
     function getStorage(keys) {
@@ -330,6 +350,106 @@
         });
     }
 
+    function hydrateDictionary(rawDictionary) {
+        return CCHShared.hydrateParsedDictionary(rawDictionary);
+    }
+
+    function currentExportFilterSettings() {
+        return {
+            minimumExportLength,
+            exportNonAlphanumericMode,
+            exportRespectExportable
+        };
+    }
+
+    function applyExportFilterSettings(settings) {
+        const hydratedSettings = CCHShared.hydrateExportFilterSettings(settings);
+        minimumExportLength = hydratedSettings.minimumExportLength;
+        exportNonAlphanumericMode = hydratedSettings.exportNonAlphanumericMode;
+        exportRespectExportable = hydratedSettings.exportRespectExportable;
+
+        els.popupMinimumExportLength.value = String(minimumExportLength);
+        els.popupExportNonAlphanumericMode.value = exportNonAlphanumericMode;
+        els.popupExportRespectExportable.checked = exportRespectExportable;
+    }
+
+    async function saveExportFilterSettings() {
+        await setStorage({[STORAGE_KEYS.exportFilterSettings]: currentExportFilterSettings()});
+    }
+
+    function saveExportFilterSettingsQuietly() {
+        void saveExportFilterSettings().catch(console.error);
+    }
+
+    function exportedWordsForCurrentDictionary() {
+        return CCHShared.buildExportedWords(currentDictionary, exportWordPreferences, currentExportFilterSettings());
+    }
+
+    function renderExportWords() {
+        const exportedWords = exportedWordsForCurrentDictionary();
+        const hasWords = exportedWords.length > 0;
+        els.popupExportWordsOutput.value = CCHShared.buildExportWordsText(exportedWords);
+        els.popupCopyExportWordsButton.disabled = !hasWords;
+        els.popupExportTextFileButton.disabled = !hasWords;
+        els.popupExportCsvButton.disabled = !hasWords;
+    }
+
+    function downloadBlob(filename, content, mimeType) {
+        const blob = new Blob([content], {type: mimeType});
+        const blobUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = blobUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(blobUrl);
+    }
+
+    async function copyExportWordsToClipboard() {
+        const text = els.popupExportWordsOutput.value || "";
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                els.popupExportWordsOutput.focus();
+                els.popupExportWordsOutput.select();
+                document.execCommand("copy");
+                els.popupExportWordsOutput.setSelectionRange(0, 0);
+            }
+            setStatus("Copied export words to clipboard.");
+        } catch (error) {
+            console.error(error);
+            setStatus("Failed to copy export words.", true);
+        }
+    }
+
+    function exportWordsToTextFile() {
+        downloadBlob(
+            "chordable-words.txt",
+            CCHShared.buildExportWordsText(exportedWordsForCurrentDictionary()),
+            "text/plain;charset=utf-8"
+        );
+        setStatus("Exported chordable words to text file.");
+    }
+
+    function exportWordsToCsvFile() {
+        const csvContent = CCHShared.buildExportWordsCsv(exportedWordsForCurrentDictionary());
+        downloadBlob("chordable-words.csv", csvContent, "text/csv;charset=utf-8");
+        setStatus("Exported chordable words to CSV.");
+    }
+
+    function switchTab(tabName) {
+        activeTab = tabName === "chordable-words" ? "chordable-words" : "appearance";
+        const showingAppearance = activeTab === "appearance";
+
+        els.popupAppearanceTab.setAttribute("aria-selected", showingAppearance ? "true" : "false");
+        els.popupChordableWordsTab.setAttribute("aria-selected", showingAppearance ? "false" : "true");
+        els.popupAppearancePanel.hidden = !showingAppearance;
+        els.popupChordableWordsPanel.hidden = showingAppearance;
+    }
+
     function updateEnabledButton(enabled) {
         els.popupEnabledButton.dataset.enabled = enabled ? "true" : "false";
         els.popupEnabledButton.setAttribute("aria-pressed", enabled ? "true" : "false");
@@ -341,9 +461,20 @@
     }
 
     async function loadInitialState() {
-        const stored = await getStorage([STORAGE_KEYS.settings]);
+        const stored = await getStorage([
+            STORAGE_KEYS.settings,
+            STORAGE_KEYS.parsedDictionary,
+            STORAGE_KEYS.exportWordPreferences,
+            STORAGE_KEYS.exportFilterSettings
+        ]);
         draftSettings = hydrateSettings(stored[STORAGE_KEYS.settings]);
+        currentDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
+        exportWordPreferences = CCHShared.normalizeExportWordPreferences(stored[STORAGE_KEYS.exportWordPreferences]);
+        exportWordPreferences = CCHShared.pruneExportWordPreferences(exportWordPreferences, currentDictionary);
+        applyExportFilterSettings(stored[STORAGE_KEYS.exportFilterSettings]);
         applySettingsToForm(draftSettings);
+        renderExportWords();
+        switchTab("appearance");
     }
 
     async function saveThemeModePreference(themeMode) {
@@ -416,9 +547,15 @@
         if (!confirmed) return;
         try {
             draftSettings = hydrateSettings(CCHShared.defaultSettings());
+            const defaultExportFilterSettings = CCHShared.hydrateExportFilterSettings(DEFAULT_EXPORT_FILTER_SETTINGS);
             applySettingsToForm(draftSettings);
+            applyExportFilterSettings(defaultExportFilterSettings);
             applyPopupTheme(draftSettings.themeMode || "system");
-            await setStorage({[STORAGE_KEYS.settings]: draftSettings});
+            renderExportWords();
+            await setStorage({
+                [STORAGE_KEYS.settings]: draftSettings,
+                [STORAGE_KEYS.exportFilterSettings]: defaultExportFilterSettings
+            });
             setStatus("Defaults restored.");
         } catch (error) {
             console.error(error);
@@ -450,6 +587,8 @@
 
     els.popupThemeToggle.addEventListener("change", handleThemeControlsChanged);
     els.popupUseSystemTheme.addEventListener("change", handleThemeControlsChanged);
+    els.popupAppearanceTab.addEventListener("click", () => switchTab("appearance"));
+    els.popupChordableWordsTab.addEventListener("click", () => switchTab("chordable-words"));
 
     [
         els.popupHintBoxDarkModeColor,
@@ -490,6 +629,45 @@
         const nextEnabled = !draftSettings.enabled;
         void saveEnabledPreference(nextEnabled);
     });
+    els.popupMinimumExportLength.addEventListener("input", () => {
+        minimumExportLength = CCHShared.hydrateExportFilterSettings({
+            minimumExportLength: els.popupMinimumExportLength.value,
+            exportNonAlphanumericMode,
+            exportRespectExportable
+        }).minimumExportLength;
+        renderExportWords();
+        saveExportFilterSettingsQuietly();
+    });
+    els.popupMinimumExportLength.addEventListener("change", () => {
+        minimumExportLength = CCHShared.hydrateExportFilterSettings({
+            minimumExportLength: els.popupMinimumExportLength.value,
+            exportNonAlphanumericMode,
+            exportRespectExportable
+        }).minimumExportLength;
+        els.popupMinimumExportLength.value = String(minimumExportLength);
+        renderExportWords();
+        saveExportFilterSettingsQuietly();
+    });
+    els.popupExportNonAlphanumericMode.addEventListener("change", () => {
+        exportNonAlphanumericMode = CCHShared.hydrateExportFilterSettings({
+            minimumExportLength,
+            exportNonAlphanumericMode: els.popupExportNonAlphanumericMode.value,
+            exportRespectExportable
+        }).exportNonAlphanumericMode;
+        els.popupExportNonAlphanumericMode.value = exportNonAlphanumericMode;
+        renderExportWords();
+        saveExportFilterSettingsQuietly();
+    });
+    els.popupExportRespectExportable.addEventListener("change", () => {
+        exportRespectExportable = els.popupExportRespectExportable.checked;
+        renderExportWords();
+        saveExportFilterSettingsQuietly();
+    });
+    els.popupCopyExportWordsButton.addEventListener("click", () => {
+        void copyExportWordsToClipboard();
+    });
+    els.popupExportTextFileButton.addEventListener("click", exportWordsToTextFile);
+    els.popupExportCsvButton.addEventListener("click", exportWordsToCsvFile);
 
     loadInitialState().catch((error) => {
         console.error(error);

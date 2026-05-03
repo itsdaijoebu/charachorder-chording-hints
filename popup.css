@@ -28,6 +28,41 @@ body {
     border-radius: 14px;
     padding: 7px 14px;
 }
+
+.popupTabRow {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.popupTabButton {
+    padding: 0 0 6px 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 1rem;
+    line-height: 1.2;
+    border-bottom: 2px solid transparent;
+}
+
+.popupTabButton[aria-selected="true"] {
+    background: transparent;
+    color: var(--text);
+    border-bottom-color: currentColor;
+}
+
+.popupTabButton:hover {
+    background: transparent;
+    color: var(--text);
+}
+
+.popupTabPanel {
+    min-width: 0;
+}
 .popupSubsection {
     margin-top: 1em;
 }
@@ -486,4 +521,84 @@ button.secondary:hover {
 
 .popupSaveSettingsCard {
     margin-top: 7px;
+}
+
+.popupExportControls {
+    display: grid;
+    gap: 12px;
+}
+
+.popupExportPrimaryRow {
+    display: grid;
+    grid-template-columns: minmax(0, 118px) minmax(0, 1fr);
+    gap: 12px;
+    align-items: end;
+}
+
+.popupCompactInlinePair {
+    align-items: center;
+}
+
+.popupCompactInlinePair > *:first-child {
+    flex: 1 1 auto;
+}
+
+.popupInlineSuffix {
+    font-size: 0.88rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.popupExportFieldWrap {
+    position: relative;
+    margin-top: 12px;
+}
+
+.popupExportWordsOutput {
+    width: 100%;
+    min-height: 250px;
+    max-height: 250px;
+    padding: 10px 44px 10px 10px;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    resize: none;
+    overflow: auto;
+    font: inherit;
+    line-height: 1.35;
+}
+
+.popupExportCopyButton {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 32px;
+    height: 32px;
+    min-width: 0;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.popupExportCopyIcon {
+    width: 1rem;
+    height: 1rem;
+    display: inline-block;
+    background-color: currentColor;
+    -webkit-mask: url("icons/dup_all.svg") center / contain no-repeat;
+    mask: url("icons/dup_all.svg") center / contain no-repeat;
+}
+
+.popupExportActionRow {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.popupExportActionRow > button {
+    width: 100%;
 }

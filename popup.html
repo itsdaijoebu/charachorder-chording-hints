@@ -32,115 +32,167 @@
     </section>
 
     <section class="popupCard">
-        <h2>Appearance</h2>
-        <div class="field_grid compactFields appearanceGrid">
-            <div class="appearanceFullRow popupThemeControls">
-                <!--                <span class="popupThemeLabel">Popup theme</span>-->
-                <label class="popupThemeToggleRow" for="popupThemeToggle">
-                    <input id="popupUseSystemTheme" type="checkbox">
-                    <span>Use system theme</span>
-                    <span class="popupThemeToggleText">Light</span>
-                    <input id="popupThemeToggle" type="checkbox" role="switch" aria-label="Toggle dark theme">
-                    <span class="popupThemeToggleText">Dark</span>
-                </label>
-            </div>
-            <label class="fieldLabel" for="popupHintBoxDarkModeColor"><span>Dark box color</span><input
-                    id="popupHintBoxDarkModeColor" type="color"></label>
-            <label class="fieldLabel" for="popupHintTextDarkModeColor"><span>Dark text color</span><input
-                    id="popupHintTextDarkModeColor" type="color"></label>
-            <label class="fieldLabel" for="popupHintBoxDarkModeOpacity"><span>Dark opacity</span><input
-                    id="popupHintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"></label>
-            <label class="fieldLabel" for="popupHintBoxLightModeColor"><span>Light box color</span><input
-                    id="popupHintBoxLightModeColor" type="color"></label>
-            <label class="fieldLabel" for="popupHintTextLightModeColor"><span>Light text color</span><input
-                    id="popupHintTextLightModeColor" type="color"></label>
-            <label class="fieldLabel" for="popupHintBoxLightModeOpacity"><span>Light opacity</span><input
-                    id="popupHintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
-            <label class="fieldLabel" for="popupHintTextFontSizeValue">
-                <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
-                      data-tooltip="em:&#10;Scales with the surrounding font size.&#10;&#10;px:&#10;Fixed pixel size.&#10;&#10;Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">Hint text size <span
-                        class="tooltipIcon" aria-hidden="true"></span></span>
-                <div class="inlineFieldPair">
-                    <input id="popupHintTextFontSizeValue" type="number" min="0.1" max="64" step="0.1">
-                    <select id="popupHintTextFontSizeUnit">
-                        <option value="em">em</option>
-                        <option value="px">px</option>
-                    </select>
-                </div>
-            </label>
-            <label class="fieldLabel" for="popupHintPosition">
-                <span>Hint position</span>
-                <select id="popupHintPosition">
-                    <option value="left">Left aligned</option>
-                    <option value="center">Centered</option>
-                </select>
-            </label>
-            <label class="fieldLabel" for="popupHintDisplay">
-                <span class="labelWithTooltip tooltipable tooltipShiftLeft tooltipOpenUpwards"
-                      data-tooltip="Show:&#10;Show chord input by default. &#10;&#10;Hide:&#10;Hides chord input by default, but shows it on hover.&#10;&#10;Click any hint box to toggle between display modes.">Hint display <span
-                        class="tooltipIcon" aria-hidden="true"></span></span>
-                <select id="popupHintDisplay">
-                    <option value="always">Show by default</option>
-                    <option value="hover">Hide by default</option>
-                </select>
-            </label>
+        <div class="popupTabRow" role="tablist" aria-label="Popup sections">
+            <button id="popupAppearanceTab" type="button" class="popupTabButton" role="tab" aria-selected="true" aria-controls="popupAppearancePanel">Settings</button>
+            <button id="popupChordableWordsTab" type="button" class="popupTabButton tooltipable" role="tab" aria-selected="false" aria-controls="popupChordableWordsPanel"
+                    data-tooltip="Easily copy-paste your chord list into a custom session (on MonkeyType, etc) to focus only on your chordable words">Chordable Words</button>
         </div>
 
-        <section class="popupSubsection">
-            <h2>Behavior</h2>
-            <div class="field_grid compactFields">
-                <div class="popupBehaviorChecks">
-                    <label class="popupCheck tooltipable tooltipOpenUpwards" for="popupEnableSubstringHints"
-                           data-tooltip="When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;This also helps with punctuation-attached outputs, ex. '.com' in 'example.com'.&#10;&#10;May affect performance, so disable if causing slowdowns.">
-                        <input id="popupEnableSubstringHints" type="checkbox">
-                        <span>Substring / Edge-char Hints</span>
-                        <span class="tooltipIcon" aria-hidden="true"></span>
-                    </label>
-                    <label class="popupCheck tooltipable tooltipOpenUpwards tooltipShiftLeft" for="popupShowChordableWordOutlines"
-                           data-tooltip="Shows outlines around chordable output.&#10;&#10;May impact performance, so disable if causing slowdowns">
-                        <input id="popupShowChordableWordOutlines" type="checkbox">
-                        <span>Show outlines</span>
-                        <span class="tooltipIcon" aria-hidden="true"></span>
+        <section id="popupAppearancePanel" class="popupTabPanel" role="tabpanel" aria-labelledby="popupAppearanceTab">
+            <div class="field_grid compactFields appearanceGrid">
+                <div class="appearanceFullRow popupThemeControls">
+                    <label class="popupThemeToggleRow" for="popupThemeToggle">
+                        <input id="popupUseSystemTheme" type="checkbox">
+                        <span>Use system theme</span>
+                        <span class="popupThemeToggleText">Light</span>
+                        <input id="popupThemeToggle" type="checkbox" role="switch" aria-label="Toggle dark theme">
+                        <span class="popupThemeToggleText">Dark</span>
                     </label>
                 </div>
-                <div class="popupBehaviorPair">
-                    <label class="fieldLabel" for="popupHintCharacterOrderMode">
+                <label class="fieldLabel" for="popupHintBoxDarkModeColor"><span>Dark box color</span><input
+                        id="popupHintBoxDarkModeColor" type="color"></label>
+                <label class="fieldLabel" for="popupHintTextDarkModeColor"><span>Dark text color</span><input
+                        id="popupHintTextDarkModeColor" type="color"></label>
+                <label class="fieldLabel" for="popupHintBoxDarkModeOpacity"><span>Dark opacity</span><input
+                        id="popupHintBoxDarkModeOpacity" type="number" min="0" max="1" step="0.01"></label>
+                <label class="fieldLabel" for="popupHintBoxLightModeColor"><span>Light box color</span><input
+                        id="popupHintBoxLightModeColor" type="color"></label>
+                <label class="fieldLabel" for="popupHintTextLightModeColor"><span>Light text color</span><input
+                        id="popupHintTextLightModeColor" type="color"></label>
+                <label class="fieldLabel" for="popupHintBoxLightModeOpacity"><span>Light opacity</span><input
+                        id="popupHintBoxLightModeOpacity" type="number" min="0" max="1" step="0.01"></label>
+                <label class="fieldLabel" for="popupHintTextFontSizeValue">
                     <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
-                          data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
-                        Input display order <span class="tooltipIcon" aria-hidden="true"></span></span>
-                        <select id="popupHintCharacterOrderMode">
-                            <option value="best-match">Best match</option>
-                            <option value="charachorder-default">CharaChorder default</option>
+                          data-tooltip="em:&#10;Scales with the surrounding font size.&#10;&#10;px:&#10;Fixed pixel size.&#10;&#10;Use em for sizing that scales more naturally with zoom and surrounding text. Use px for a fixed on-screen size.">Hint text size <span
+                            class="tooltipIcon" aria-hidden="true"></span></span>
+                    <div class="inlineFieldPair">
+                        <input id="popupHintTextFontSizeValue" type="number" min="0.1" max="64" step="0.1">
+                        <select id="popupHintTextFontSizeUnit">
+                            <option value="em">em</option>
+                            <option value="px">px</option>
+                        </select>
+                    </div>
+                </label>
+                <label class="fieldLabel" for="popupHintPosition">
+                    <span>Hint position</span>
+                    <select id="popupHintPosition">
+                        <option value="left">Left aligned</option>
+                        <option value="center">Centered</option>
+                    </select>
+                </label>
+                <label class="fieldLabel" for="popupHintDisplay">
+                    <span class="labelWithTooltip tooltipable tooltipShiftLeft tooltipOpenUpwards"
+                          data-tooltip="Show:&#10;Show chord input by default. &#10;&#10;Hide:&#10;Hides chord input by default, but shows it on hover.&#10;&#10;Click any hint box to toggle between display modes.">Hint display <span
+                            class="tooltipIcon" aria-hidden="true"></span></span>
+                    <select id="popupHintDisplay">
+                        <option value="always">Show by default</option>
+                        <option value="hover">Hide by default</option>
+                    </select>
+                </label>
+            </div>
+
+            <section class="popupSubsection">
+                <h2>Behavior</h2>
+                <div class="field_grid compactFields">
+                    <div class="popupBehaviorChecks">
+                        <label class="popupCheck tooltipable tooltipOpenUpwards" for="popupEnableSubstringHints"
+                               data-tooltip="When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;This also helps with punctuation-attached outputs, ex. '.com' in 'example.com'.&#10;&#10;May affect performance, so disable if causing slowdowns.">
+                            <input id="popupEnableSubstringHints" type="checkbox">
+                            <span>Substring Hints</span>
+                            <span class="tooltipIcon" aria-hidden="true"></span>
+                        </label>
+                        <label class="popupCheck tooltipable tooltipOpenUpwards tooltipShiftLeft" for="popupShowChordableWordOutlines"
+                               data-tooltip="Shows outlines around chordable output.&#10;&#10;May impact performance, so disable if causing slowdowns">
+                            <input id="popupShowChordableWordOutlines" type="checkbox">
+                            <span>Show outlines</span>
+                            <span class="tooltipIcon" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <div class="popupBehaviorPair">
+                        <label class="fieldLabel" for="popupHintCharacterOrderMode">
+                        <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                              data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
+                            Input display order <span class="tooltipIcon" aria-hidden="true"></span></span>
+                            <select id="popupHintCharacterOrderMode">
+                                <option value="best-match">Best match</option>
+                                <option value="charachorder-default">CharaChorder default</option>
+                            </select>
+                        </label>
+                        <label class="fieldLabel" for="popupMinimumWordLength">
+                        <span class="labelWithTooltip tooltipable tooltipShiftLeft tooltipOpenUpwards"
+                              data-tooltip="The minimum length a word or substring needs to be to trigger chord hints.&#10;&#10;Try increasing to improve performance if necessary.">Min word length <span
+                                class="tooltipIcon" aria-hidden="true"></span></span>
+                            <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
+                        </label>
+                    </div>
+
+                    <div class="appearanceFullRow popupPreviewGrid" aria-label="Live appearance preview">
+                        <div class="popupPreviewPanel popupPreviewPanelDark">
+                            <div class="popupPreviewCanvas">
+                                <div id="popupDarkPreviewWord" class="popupPreviewWord">
+                                    <div id="popupDarkPreviewHint" class="popupPreviewHint">dark</div>
+                                    <span id="popupDarkPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="popupPreviewPanel popupPreviewPanelLight">
+                            <div class="popupPreviewCanvas">
+                                <div id="popupLightPreviewWord" class="popupPreviewWord">
+                                    <div id="popupLightPreviewHint" class="popupPreviewHint">light</div>
+                                    <span id="popupLightPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <section id="popupChordableWordsPanel" class="popupTabPanel" role="tabpanel" aria-labelledby="popupChordableWordsTab" hidden>
+            <div class="popupExportControls">
+                <div class="popupExportPrimaryRow">
+                    <label class="fieldLabel" for="popupMinimumExportLength">
+                        <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                              data-tooltip="Only include output that is at least this long. For example, 2 leaves out single-letter output such as 'a'.">
+                            Min length: <span class="tooltipIcon" aria-hidden="true"></span>
+                        </span>
+                        <div class="inlineFieldPair popupCompactInlinePair">
+                            <input id="popupMinimumExportLength" type="number" min="1" max="128" step="1">
+                        </div>
+                    </label>
+
+                    <label class="fieldLabel" for="popupExportNonAlphanumericMode">
+                        <span class="labelWithTooltip tooltipable tooltipShiftLeft"
+                              data-tooltip="Include all:&#10;Keeps every printable output, including punctuation and symbols.&#10;&#10;Allow in words:&#10;Leaves out output made entirely of punctuation, symbols, or spacing, but keeps output that has at least one letter or number.&#10;&#10;Ignore all:&#10;Leaves out any output that contains punctuation, symbols, or spacing anywhere in it.">
+                            Non-alphanumerics <span class="tooltipIcon" aria-hidden="true"></span>
+                        </span>
+                        <select id="popupExportNonAlphanumericMode">
+                            <option value="include-all">Include all</option>
+                            <option value="ignore-only">Allow in words</option>
+                            <option value="ignore-any">Ignore all</option>
                         </select>
                     </label>
-                    <label class="fieldLabel" for="popupMinimumWordLength">
-                    <span class="labelWithTooltip tooltipable tooltipShiftLeft tooltipOpenUpwards"
-                          data-tooltip="The minimum length a word or substring needs to be to trigger chord hints.&#10;&#10;Try increasing to improve performance if necessary.">Min word length <span
-                            class="tooltipIcon" aria-hidden="true"></span></span>
-                        <input id="popupMinimumWordLength" type="number" min="1" max="64" step="1">
-                    </label>
                 </div>
-                
-                <div class="appearanceFullRow popupPreviewGrid" aria-label="Live appearance preview">
-                    <div class="popupPreviewPanel popupPreviewPanelDark">
-                        <div class="popupPreviewCanvas">
-                            <div id="popupDarkPreviewWord" class="popupPreviewWord">
-                                <div id="popupDarkPreviewHint" class="popupPreviewHint">dark</div>
-                                <span id="popupDarkPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Dark</span></span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="popupPreviewPanel popupPreviewPanelLight">
-                        <div class="popupPreviewCanvas">
-                            <div id="popupLightPreviewWord" class="popupPreviewWord">
-                                <div id="popupLightPreviewHint" class="popupPreviewHint">light</div>
-                                <span id="popupLightPreviewText" class="popupPreviewWordText"><span class="popupPreviewOutlineSegment">Light</span></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
+                <label class="popupCheck tooltipable tooltipOpenUpwards" for="popupExportRespectExportable"
+                       data-tooltip="When this is on, the export list follows each row's Exportable setting. When it is off, the export ignores those row checkboxes.">
+                    <input id="popupExportRespectExportable" type="checkbox">
+                    <span>Respect &quot;Exportable?&quot;</span>
+                    <span class="tooltipIcon" aria-hidden="true"></span>
+                </label>
             </div>
-            
+
+            <div class="popupExportFieldWrap">
+                <button id="popupCopyExportWordsButton" type="button" class="popupExportCopyButton" aria-label="Copy export words" title="Copy export words">
+                    <span class="popupExportCopyIcon" aria-hidden="true"></span>
+                </button>
+                <textarea id="popupExportWordsOutput" class="popupExportWordsOutput" readonly spellcheck="false" placeholder="No chordable words to export yet."></textarea>
+            </div>
+
+            <div class="popupExportActionRow">
+                <button id="popupExportTextFileButton" type="button" class="secondary">Export to text file</button>
+                <button id="popupExportCsvButton" type="button" class="secondary">Export to csv</button>
+            </div>
         </section>
     </section>
 

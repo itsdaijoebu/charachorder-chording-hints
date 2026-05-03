@@ -3,6 +3,7 @@
         parsedDictionary: "parsedDictionary",
         inputDisplayOverrides: "inputDisplayOverrides",
         exportWordPreferences: "exportWordPreferences",
+        exportFilterSettings: "exportFilterSettings",
         settings: "settings",
         optionsSyncIntent: "optionsSyncIntent"
     };
@@ -11,6 +12,7 @@
     const SERIAL_BAUD_RATE = 115200;
     const SERIAL_COUNT_TIMEOUT_MS = 4000;
     const SERIAL_ENTRY_TIMEOUT_MS = 2000;
+    const DEFAULT_EXPORT_FILTER_SETTINGS = CCHShared.defaultExportFilterSettings();
 
     let currentPage = 1;
     let currentRawDictionary = null;
@@ -571,75 +573,38 @@
         return visibleOutputCharacters(entry).length > 0;
     }
 
-    function normalizeMinimumExportLength(value) {
-        const parsed = Math.floor(Number(value));
-        if (!Number.isFinite(parsed)) return 2;
-        return Math.max(1, Math.min(128, parsed));
+    function currentExportFilterSettings() {
+        return {
+            minimumExportLength,
+            exportNonAlphanumericMode,
+            exportRespectExportable
+        };
     }
 
-    function exportTextForEntry(entry) {
-        return visibleOutputCharacters(entry);
+    function applyExportFilterSettings(settings) {
+        const hydratedSettings = CCHShared.hydrateExportFilterSettings(settings);
+        minimumExportLength = hydratedSettings.minimumExportLength;
+        exportNonAlphanumericMode = hydratedSettings.exportNonAlphanumericMode;
+        exportRespectExportable = hydratedSettings.exportRespectExportable;
+
+        els.minimumExportLength.value = String(minimumExportLength);
+        els.exportNonAlphanumericMode.value = exportNonAlphanumericMode;
+        els.exportRespectExportable.checked = exportRespectExportable;
     }
 
-    function exportPreferenceKeyForEntry(entry) {
-        return exportTextForEntry(entry);
+    async function saveExportFilterSettings() {
+        await setStorage({[STORAGE_KEYS.exportFilterSettings]: currentExportFilterSettings()});
     }
 
-    function normalizeExportWordPreferences(value) {
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
-            return {};
-        }
-
-        const normalized = {};
-        Object.entries(value).forEach(([key, prefValue]) => {
-            if (typeof key !== "string") {
-                return;
-            }
-            normalized[key] = prefValue !== false;
-        });
-        return normalized;
-    }
-
-    function pruneExportWordPreferences(preferences, dictionary) {
-        const safePreferences = normalizeExportWordPreferences(preferences);
-        const validKeys = new Set((dictionary?.entries || []).map((entry) => exportPreferenceKeyForEntry(entry)));
-        const pruned = {};
-
-        Object.entries(safePreferences).forEach(([key, value]) => {
-            if (validKeys.has(key)) {
-                pruned[key] = value !== false;
-            }
-        });
-
-        return pruned;
-    }
-
-    function isExportWordEnabled(exportKey) {
-        return exportWordPreferences[String(exportKey ?? "")] !== false;
-    }
-
-    function isEntryExportable(entry) {
-        return isExportWordEnabled(exportPreferenceKeyForEntry(entry));
-    }
-
-    function isStrictlyAlphanumericWord(text) {
-        return /^[\p{L}\p{N}]+$/u.test(String(text || ""));
-    }
-
-    function hasAnyAlphanumericCharacter(text) {
-        return /[\p{L}\p{N}]/u.test(String(text || ""));
-    }
-
-    function normalizeExportNonAlphanumericMode(value) {
-        if (value === "include-all" || value === "ignore-any") {
-            return value;
-        }
-        return "ignore-only";
+    function saveExportFilterSettingsQuietly() {
+        void saveExportFilterSettings().catch(console.error);
     }
 
     function updateExportableHeaderCheckbox() {
-        const uniqueKeys = Array.from(new Set((currentDictionary?.entries || []).map((entry) => exportPreferenceKeyForEntry(entry))));
-        const exportableCount = uniqueKeys.filter((key) => isExportWordEnabled(key)).length;
+        const uniqueKeys = Array.from(new Set(
+            (currentDictionary?.entries || []).map((entry) => CCHShared.exportPreferenceKeyForEntry(entry))
+        ));
+        const exportableCount = uniqueKeys.filter((key) => CCHShared.isExportWordEnabled(exportWordPreferences, key)).length;
 
         els.toggleAllExportable.indeterminate = exportableCount > 0 && exportableCount < uniqueKeys.length;
         els.toggleAllExportable.checked = uniqueKeys.length > 0 && exportableCount === uniqueKeys.length;
@@ -647,49 +612,13 @@
     }
 
     function exportedWordsForCurrentDictionary() {
-        const uniqueWords = new Set();
-        const entries = currentDictionary?.entries || [];
-        return entries
-            .map((entry) => ({
-                entry,
-                text: exportTextForEntry(entry)
-            }))
-            .filter(({entry, text}) => {
-                if (!text) {
-                    return false;
-                }
-                if (text.length < minimumExportLength) {
-                    return false;
-                }
-                if (exportNonAlphanumericMode === "ignore-only" && !hasAnyAlphanumericCharacter(text)) {
-                    return false;
-                }
-                if (exportNonAlphanumericMode === "ignore-any" && !isStrictlyAlphanumericWord(text)) {
-                    return false;
-                }
-                if (exportRespectExportable && !isEntryExportable(entry)) {
-                    return false;
-                }
-                if (uniqueWords.has(text)) {
-                    return false;
-                }
-                uniqueWords.add(text);
-                return true;
-            })
-            .sort((left, right) => {
-                const textCompare = left.text.localeCompare(right.text, undefined, {sensitivity: "variant"});
-                if (textCompare !== 0) {
-                    return textCompare;
-                }
-                return (left.entry?.index ?? 0) - (right.entry?.index ?? 0);
-            })
-            .map(({text}) => text);
+        return CCHShared.buildExportedWords(currentDictionary, exportWordPreferences, currentExportFilterSettings());
     }
 
     function renderExportWords() {
         const exportedWords = exportedWordsForCurrentDictionary();
         const hasExportWords = exportedWords.length > 0;
-        els.exportWordsOutput.value = exportedWords.join(" ");
+        els.exportWordsOutput.value = CCHShared.buildExportWordsText(exportedWords);
         els.copyExportWordsButton.disabled = !hasExportWords;
         els.exportTextFileButton.disabled = !hasExportWords;
         els.exportCsvButton.disabled = !hasExportWords;
@@ -708,21 +637,16 @@
     }
 
     function exportWordsToTextFile() {
-        downloadBlob("chordable-words.txt", els.exportWordsOutput.value || "", "text/plain;charset=utf-8");
+        downloadBlob(
+            "chordable-words.txt",
+            CCHShared.buildExportWordsText(exportedWordsForCurrentDictionary()),
+            "text/plain;charset=utf-8"
+        );
         setStatus(els.importStatus, "Exported chordable words to text file.");
     }
 
-    function csvEscape(value) {
-        const text = String(value ?? "");
-        if (!/[",\r\n]/.test(text)) {
-            return text;
-        }
-        return `"${text.replace(/"/g, "\"\"")}"`;
-    }
-
     function exportWordsToCsvFile() {
-        const rows = exportedWordsForCurrentDictionary();
-        const csvContent = rows.map((word) => csvEscape(word)).join("\r\n");
+        const csvContent = CCHShared.buildExportWordsCsv(exportedWordsForCurrentDictionary());
         downloadBlob("chordable-words.csv", csvContent, "text/csv;charset=utf-8");
         setStatus(els.importStatus, "Exported chordable words to CSV.");
     }
@@ -1039,7 +963,9 @@
     }
 
     function setAllEntriesExportable(exportable) {
-        const uniqueKeys = Array.from(new Set((currentDictionary?.entries || []).map((entry) => exportPreferenceKeyForEntry(entry))));
+        const uniqueKeys = Array.from(new Set(
+            (currentDictionary?.entries || []).map((entry) => CCHShared.exportPreferenceKeyForEntry(entry))
+        ));
         if (!uniqueKeys.length) {
             return;
         }
@@ -1127,10 +1053,13 @@
             tdExportable.className = "exportableCell";
             const exportableToggle = document.createElement("input");
             exportableToggle.type = "checkbox";
-            exportableToggle.checked = isEntryExportable(entry);
-            exportableToggle.setAttribute("aria-label", `Toggle exportable for ${exportPreferenceKeyForEntry(entry) || entry.outputText || "entry"}`);
+            exportableToggle.checked = CCHShared.isEntryExportable(entry, exportWordPreferences);
+            exportableToggle.setAttribute(
+                "aria-label",
+                `Toggle exportable for ${CCHShared.exportPreferenceKeyForEntry(entry) || entry.outputText || "entry"}`
+            );
             exportableToggle.addEventListener("change", () => {
-                setExportWordEnabled(exportPreferenceKeyForEntry(entry), exportableToggle.checked);
+                setExportWordEnabled(CCHShared.exportPreferenceKeyForEntry(entry), exportableToggle.checked);
             });
             tdExportable.appendChild(exportableToggle);
             tr.appendChild(tdExportable);
@@ -2116,7 +2045,7 @@
     }
 
     async function saveParsedDictionary(parsedDictionary, successMessage) {
-        const nextExportWordPreferences = pruneExportWordPreferences(exportWordPreferences, parsedDictionary);
+        const nextExportWordPreferences = CCHShared.pruneExportWordPreferences(exportWordPreferences, parsedDictionary);
         await setStorage({
             [STORAGE_KEYS.parsedDictionary]: parsedDictionary,
             [STORAGE_KEYS.inputDisplayOverrides]: {},
@@ -2356,9 +2285,15 @@
         try {
             setBusy(true);
             const defaults = hydrateSettings(CCHShared.defaultSettings());
+            const defaultExportFilterSettings = CCHShared.hydrateExportFilterSettings(DEFAULT_EXPORT_FILTER_SETTINGS);
             applySettingsToForm(defaults);
+            applyExportFilterSettings(defaultExportFilterSettings);
             updateAppearancePreview(defaults);
-            await setStorage({[STORAGE_KEYS.settings]: defaults});
+            await setStorage({
+                [STORAGE_KEYS.settings]: defaults,
+                [STORAGE_KEYS.exportFilterSettings]: defaultExportFilterSettings
+            });
+            renderLoadedChords(defaults);
             setStatus(els.settingsStatus, "Settings returned to defaults.");
         } catch (error) {
             console.error(error);
@@ -2405,7 +2340,11 @@
 
             const label = document.createElement("span");
             label.className = "collapseLabel";
-            label.textContent = heading.textContent || "Section";
+            if (heading.childNodes.length) {
+                label.replaceChildren(...Array.from(heading.childNodes).map((node) => node.cloneNode(true)));
+            } else {
+                label.textContent = heading.textContent || "Section";
+            }
 
             const chevron = document.createElement("span");
             chevron.className = "collapseChevron";
@@ -2441,28 +2380,20 @@
         });
     }
 
-    function initializeExportControls() {
-        minimumExportLength = normalizeMinimumExportLength(els.minimumExportLength.value);
-        exportNonAlphanumericMode = normalizeExportNonAlphanumericMode(els.exportNonAlphanumericMode.value);
-        exportRespectExportable = els.exportRespectExportable.checked;
-        els.minimumExportLength.value = String(minimumExportLength);
-        els.exportNonAlphanumericMode.value = exportNonAlphanumericMode;
-    }
-
     async function loadInitialState() {
-        initializeExportControls();
-
         const stored = await getStorage([
             STORAGE_KEYS.parsedDictionary,
             STORAGE_KEYS.inputDisplayOverrides,
             STORAGE_KEYS.exportWordPreferences,
+            STORAGE_KEYS.exportFilterSettings,
             STORAGE_KEYS.settings
         ]);
         currentRawDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
         inputDisplayOverrides = stored[STORAGE_KEYS.inputDisplayOverrides] || {};
-        exportWordPreferences = normalizeExportWordPreferences(stored[STORAGE_KEYS.exportWordPreferences]);
+        exportWordPreferences = CCHShared.normalizeExportWordPreferences(stored[STORAGE_KEYS.exportWordPreferences]);
         applyCurrentDictionary();
-        exportWordPreferences = pruneExportWordPreferences(exportWordPreferences, currentDictionary);
+        exportWordPreferences = CCHShared.pruneExportWordPreferences(exportWordPreferences, currentDictionary);
+        applyExportFilterSettings(stored[STORAGE_KEYS.exportFilterSettings]);
         const settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
 
         applySettingsToForm(settings);
@@ -2480,6 +2411,11 @@
             const settings = hydrateSettings(changes[STORAGE_KEYS.settings].newValue);
             applySettingsToForm(settings);
             renderLoadedChords(settings);
+        }
+
+        if (Object.prototype.hasOwnProperty.call(changes, STORAGE_KEYS.exportFilterSettings)) {
+            applyExportFilterSettings(changes[STORAGE_KEYS.exportFilterSettings].newValue);
+            renderLoadedChords(currentSettingsFromForm());
         }
 
         if (!changes[STORAGE_KEYS.optionsSyncIntent]?.newValue) return;
@@ -2532,25 +2468,41 @@
     });
 
     els.minimumExportLength.addEventListener("input", () => {
-        minimumExportLength = normalizeMinimumExportLength(els.minimumExportLength.value);
+        minimumExportLength = CCHShared.hydrateExportFilterSettings({
+            minimumExportLength: els.minimumExportLength.value,
+            exportNonAlphanumericMode,
+            exportRespectExportable
+        }).minimumExportLength;
         renderLoadedChords(currentSettingsFromForm());
+        saveExportFilterSettingsQuietly();
     });
 
     els.minimumExportLength.addEventListener("change", () => {
-        minimumExportLength = normalizeMinimumExportLength(els.minimumExportLength.value);
+        minimumExportLength = CCHShared.hydrateExportFilterSettings({
+            minimumExportLength: els.minimumExportLength.value,
+            exportNonAlphanumericMode,
+            exportRespectExportable
+        }).minimumExportLength;
         els.minimumExportLength.value = String(minimumExportLength);
         renderLoadedChords(currentSettingsFromForm());
+        saveExportFilterSettingsQuietly();
     });
 
     els.exportNonAlphanumericMode.addEventListener("change", () => {
-        exportNonAlphanumericMode = normalizeExportNonAlphanumericMode(els.exportNonAlphanumericMode.value);
+        exportNonAlphanumericMode = CCHShared.hydrateExportFilterSettings({
+            minimumExportLength,
+            exportNonAlphanumericMode: els.exportNonAlphanumericMode.value,
+            exportRespectExportable
+        }).exportNonAlphanumericMode;
         els.exportNonAlphanumericMode.value = exportNonAlphanumericMode;
         renderLoadedChords(currentSettingsFromForm());
+        saveExportFilterSettingsQuietly();
     });
 
     els.exportRespectExportable.addEventListener("change", () => {
         exportRespectExportable = els.exportRespectExportable.checked;
         renderLoadedChords(currentSettingsFromForm());
+        saveExportFilterSettingsQuietly();
     });
 
     els.copyExportWordsButton.addEventListener("click", () => {

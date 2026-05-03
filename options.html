@@ -175,30 +175,35 @@
     </section>
 
     <section class="card" data-collapsed-default="true">
-        <h2>Export Chordable Words</h2>
+        <h2>
+            <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                  data-tooltip="Easily copy-paste your chord list into a custom session (on MonkeyType, etc) to focus only on your chordable words">
+                <span>Export Chordable Words</span>
+                <span class="tooltipIcon" aria-hidden="true"></span>
+            </span>
+        </h2>
         <div class="exportControls">
             <label class="fieldLabel exportThresholdField" for="minimumExportLength">
                 <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
-                      data-tooltip="Minimum length for output to be included.&#10;Ex. 2 leaves out single-letter outputs such as 'a'.">
+                      data-tooltip="Outputs must be at least this long to be included.&#10;Ex. 2 leaves out single-letter outputs such as 'a'.">
                     <span>Minimum length:</span>
                     <span class="tooltipIcon" aria-hidden="true"></span>
                 </span>
                 <div class="inlineFieldPair exportThresholdInputs">
                     <input id="minimumExportLength" type="number" min="1" max="128" step="1" value="2">
-                    <span class="exportThresholdSuffix">character(s)</span>
                 </div>
             </label>
 
             <label class="fieldLabel" for="exportNonAlphanumericMode">
                 <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
-                      data-tooltip="Include all characters:&#10;Keeps every printable output, including punctuation and symbols.&#10;&#10;Ignore non-alphanumeric-only output:&#10;Leaves out output made entirely of punctuation, symbols, or spacing, but keeps output that has at least one letter or number.&#10;&#10;Ignore all outputs with non-alphanumerics:&#10;Leaves out any output that contains punctuation, symbols, or spacing anywhere in it.">
+                      data-tooltip="Include all:&#10;Keeps every printable output, including punctuation and symbols.&#10;&#10;Allow in words:&#10;Leaves out output made entirely of punctuation, symbols, or spacing, but keeps output that has at least one letter or number.&#10;&#10;Ignore all:&#10;Leaves out any output that contains punctuation, symbols, or spacing anywhere in it.">
                     <span>Non-alphanumeric output</span>
                     <span class="tooltipIcon" aria-hidden="true"></span>
                 </span>
                 <select id="exportNonAlphanumericMode">
-                    <option value="include-all">Include all characters</option>
-                    <option value="ignore-only" selected>Ignore non-alphanumeric-only output</option>
-                    <option value="ignore-any">Ignore all outputs with non-alphanumerics</option>
+                    <option value="include-all">Include all</option>
+                    <option value="ignore-only" selected>Allow in words</option>
+                    <option value="ignore-any">Ignore all</option>
                 </select>
             </label>
 
@@ -219,6 +224,8 @@
             </div>
         </div>
     </section>
+    
+    <section class="divider"></section>
 
     <section class="saveSettingsCard">
         <div class="actions">

@@ -543,8 +543,7 @@
       outputText,
       normalizedOutput,
       userFlags: {
-        displayEnabled: userFlags?.displayEnabled !== false,
-        exportable: userFlags?.exportable !== false
+        displayEnabled: userFlags?.displayEnabled !== false
       },
       flags: {
         hasArpeggiate: nonZeroInput.includes(1001),
@@ -595,7 +594,6 @@
       typeof entry.normalizedOutput === "string" &&
       entry.userFlags &&
       typeof entry.userFlags === "object" &&
-      typeof entry.userFlags.exportable === "boolean" &&
       entry.flags &&
       typeof entry.flags === "object"
     );
@@ -890,6 +888,154 @@
     return value === "charachorder-default" ? "charachorder-default" : "best-match";
   }
 
+  function defaultExportFilterSettings() {
+    return {
+      minimumExportLength: 2,
+      exportNonAlphanumericMode: "ignore-only",
+      exportRespectExportable: true
+    };
+  }
+
+  function normalizeMinimumExportLength(value) {
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed)) return defaultExportFilterSettings().minimumExportLength;
+    return Math.max(1, Math.min(128, parsed));
+  }
+
+  function normalizeExportNonAlphanumericMode(value) {
+    if (value === "include-all" || value === "ignore-any") {
+      return value;
+    }
+    return "ignore-only";
+  }
+
+  function hydrateExportFilterSettings(rawSettings) {
+    const safeSettings = rawSettings && typeof rawSettings === "object" ? rawSettings : {};
+    const defaults = defaultExportFilterSettings();
+    return {
+      minimumExportLength: normalizeMinimumExportLength(
+        safeSettings.minimumExportLength ?? defaults.minimumExportLength
+      ),
+      exportNonAlphanumericMode: normalizeExportNonAlphanumericMode(
+        safeSettings.exportNonAlphanumericMode ?? defaults.exportNonAlphanumericMode
+      ),
+      exportRespectExportable: safeSettings.exportRespectExportable !== false
+    };
+  }
+
+  function normalizeExportWordPreferences(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return {};
+    }
+
+    const normalized = {};
+    Object.entries(value).forEach(([key, prefValue]) => {
+      if (typeof key === "string") {
+        normalized[key] = prefValue !== false;
+      }
+    });
+    return normalized;
+  }
+
+  function exportTextForEntry(entry) {
+    return visibleOutputText(Array.isArray(entry?.outputCodes) ? entry.outputCodes : []);
+  }
+
+  function exportPreferenceKeyForEntry(entry) {
+    return exportTextForEntry(entry);
+  }
+
+  function pruneExportWordPreferences(preferences, dictionary) {
+    const safePreferences = normalizeExportWordPreferences(preferences);
+    const validKeys = new Set((dictionary?.entries || []).map((entry) => exportPreferenceKeyForEntry(entry)));
+    const pruned = {};
+
+    Object.entries(safePreferences).forEach(([key, value]) => {
+      if (validKeys.has(key)) {
+        pruned[key] = value !== false;
+      }
+    });
+
+    return pruned;
+  }
+
+  function isExportWordEnabled(preferences, exportKey) {
+    return normalizeExportWordPreferences(preferences)[String(exportKey ?? "")] !== false;
+  }
+
+  function isEntryExportable(entry, preferences) {
+    return isExportWordEnabled(preferences, exportPreferenceKeyForEntry(entry));
+  }
+
+  function hasAnyAlphanumericCharacter(text) {
+    return /[\p{L}\p{N}]/u.test(String(text || ""));
+  }
+
+  function isStrictlyAlphanumericWord(text) {
+    return /^[\p{L}\p{N}]+$/u.test(String(text || ""));
+  }
+
+  function buildExportedWords(dictionary, preferences, filterSettings) {
+    const hydratedFilterSettings = hydrateExportFilterSettings(filterSettings);
+    const safePreferences = pruneExportWordPreferences(preferences, dictionary);
+    const uniqueWords = new Set();
+
+    return (dictionary?.entries || [])
+      .map((entry) => ({
+        entry,
+        text: exportTextForEntry(entry)
+      }))
+      .filter(({entry, text}) => {
+        if (!text) {
+          return false;
+        }
+        if (text.length < hydratedFilterSettings.minimumExportLength) {
+          return false;
+        }
+        if (
+          hydratedFilterSettings.exportNonAlphanumericMode === "ignore-only"
+          && !hasAnyAlphanumericCharacter(text)
+        ) {
+          return false;
+        }
+        if (
+          hydratedFilterSettings.exportNonAlphanumericMode === "ignore-any"
+          && !isStrictlyAlphanumericWord(text)
+        ) {
+          return false;
+        }
+        if (
+          hydratedFilterSettings.exportRespectExportable
+          && !isEntryExportable(entry, safePreferences)
+        ) {
+          return false;
+        }
+        if (uniqueWords.has(text)) {
+          return false;
+        }
+        uniqueWords.add(text);
+        return true;
+      })
+      .map(({text}) => text)
+      .sort((left, right) => left.localeCompare(right, undefined, {sensitivity: "variant"}));
+  }
+
+  function buildExportWordsText(words) {
+    return (Array.isArray(words) ? words : []).join(" ");
+  }
+
+  function escapeCsvValue(value) {
+    const text = String(value ?? "");
+    if (!/[",\r\n]/.test(text)) {
+      return text;
+    }
+    return `"${text.replace(/"/g, "\"\"")}"`;
+  }
+
+  function buildExportWordsCsv(words) {
+    return (Array.isArray(words) ? words : []).map((word) => escapeCsvValue(word)).join("\r\n");
+  }
+
   function isAlphanumericCharacter(char) {
     return /[\p{L}\p{N}]/u.test(String(char || ""));
   }
@@ -998,6 +1144,17 @@
     buildEntry,
     applyInputDisplayOverrides,
     defaultSettings,
+    defaultExportFilterSettings,
+    hydrateExportFilterSettings,
+    normalizeExportWordPreferences,
+    exportTextForEntry,
+    exportPreferenceKeyForEntry,
+    pruneExportWordPreferences,
+    isExportWordEnabled,
+    isEntryExportable,
+    buildExportedWords,
+    buildExportWordsText,
+    buildExportWordsCsv,
     normalizeMinimumWordLength,
     normalizeHintCharacterOrderMode,
     reorderSegmentTokensForBestMatch,

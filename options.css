@@ -773,6 +773,9 @@ input[type="color"]::-moz-color-swatch {
   background: var(--cch-card-bg);
   color: var(--cch-text);
   box-shadow: var(--cch-card-shadow);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.4;
   white-space: pre-line;
   opacity: 0;
   pointer-events: none;
@@ -1156,4 +1159,10 @@ input[type="color"]::-moz-color-swatch {
 .exportCopyButton::before {
   -webkit-mask-image: url("icons/dup_all.svg");
   mask-image: url("icons/dup_all.svg");
+}
+
+.divider {
+  height: 2px;
+  background: var(--cch-border-soft);
+  margin: 12px 0;
 }
