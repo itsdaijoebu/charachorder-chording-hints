@@ -464,8 +464,6 @@
     return text
       .trim()
       .replace(/\s+/gu, " ")
-      .replace(/^[^\p{L}\p{N}]+/gu, "")
-      .replace(/[^\p{L}\p{N}]+$/gu, "")
       .toLowerCase();
   }
 

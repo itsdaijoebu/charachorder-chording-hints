@@ -912,6 +912,31 @@
         return CCHShared.normalizeTokenForLookup(wordRecordText(word));
     }
 
+    function stripPromptEdgeSpecialCharacters(text) {
+        return String(text || "")
+            .replace(/^[^\p{L}\p{N}\s]+/gu, "")
+            .replace(/[^\p{L}\p{N}\s]+$/gu, "");
+    }
+
+    function exactLookupKeysForText(rawText, strictNormalized = null) {
+        const keys = [];
+        const safeStrictNormalized = typeof strictNormalized === "string"
+            ? strictNormalized
+            : CCHShared.normalizeTokenForLookup(rawText);
+
+        if (safeStrictNormalized) {
+            keys.push(safeStrictNormalized);
+        }
+
+        const edgeStrippedText = stripPromptEdgeSpecialCharacters(rawText);
+        const edgeStrippedNormalized = CCHShared.normalizeTokenForLookup(edgeStrippedText);
+        if (edgeStrippedNormalized && !keys.includes(edgeStrippedNormalized)) {
+            keys.push(edgeStrippedNormalized);
+        }
+
+        return keys;
+    }
+
     function wordRecordHasLookupText(word) {
         return Boolean(wordRecordNormalizedText(word));
     }
@@ -1715,12 +1740,16 @@
             words.length - startIndex
         );
         const phraseTexts = [];
+        const strictNormalizedTexts = [];
         let phrase = "";
 
         for (let wordCount = 1; wordCount <= maxWordCount; wordCount += 1) {
             const text = wordRecordText(words[startIndex + wordCount - 1]);
             phrase = phrase ? `${phrase} ${text}` : text;
             phraseTexts[wordCount] = phrase;
+            strictNormalizedTexts[wordCount] = wordCount === 1
+                ? wordRecordNormalizedText(words[startIndex])
+                : CCHShared.normalizeTokenForLookup(phrase);
         }
 
         for (let wordCount = maxWordCount; wordCount >= 1; wordCount -= 1) {
@@ -1729,36 +1758,41 @@
             }
 
             const rawText = phraseTexts[wordCount];
-            const normalized = wordCount === 1
-                ? wordRecordNormalizedText(words[startIndex])
-                : CCHShared.normalizeTokenForLookup(rawText);
+            const strictNormalized = strictNormalizedTexts[wordCount];
 
-            if (!normalized || !phraseMeetsMinimumLength(rawText)) {
+            if (!strictNormalized) {
                 continue;
             }
 
-            const chosen = chooseEntriesForNormalizedOutput(normalized);
-            if (!chosen) {
+            if (wordCount === 1 && !phraseMeetsMinimumLength(rawText)) {
                 continue;
             }
-            if (!chosen.length) {
+
+            const exactLookupKeys = exactLookupKeysForText(rawText, strictNormalized);
+            for (const normalized of exactLookupKeys) {
+                const chosen = chooseEntriesForNormalizedOutput(normalized);
+                if (!chosen) {
+                    continue;
+                }
+                if (!chosen.length) {
+                    return {
+                        matched: false,
+                        reason: "filtered-out",
+                        word: rawText,
+                        normalized,
+                        wordCount
+                    };
+                }
+
                 return {
-                    matched: false,
-                    reason: "filtered-out",
+                    matched: true,
                     word: rawText,
                     normalized,
-                    wordCount
+                    labels: [{ entries: chosen, anchor: null }],
+                    wordCount,
+                    isSubstringMatch: false
                 };
             }
-
-            return {
-                matched: true,
-                word: rawText,
-                normalized,
-                labels: [{ entries: chosen, anchor: null }],
-                wordCount,
-                isSubstringMatch: false
-            };
         }
 
         const rawText = phraseTexts[1] || "";
