@@ -1062,3 +1062,93 @@ input[type="color"]::-moz-color-swatch {
   left: 0;
   top: calc(100% + 8px);
 }
+
+.tableHeaderInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exportableHeaderCheck {
+  gap: 8px;
+}
+
+.exportableCell {
+  width: 132px;
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.exportableCell .check {
+  justify-content: center;
+}
+
+.exportControls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.exportThresholdField {
+  max-width: 320px;
+}
+
+.exportThresholdInputs {
+  grid-template-columns: minmax(0, 104px) auto;
+  align-items: center;
+}
+
+.exportThresholdSuffix {
+  font-weight: 600;
+}
+
+.exportFieldWrap {
+  position: relative;
+  margin-top: 12px;
+}
+
+.exportWordsOutput {
+  min-height: 220px;
+  height: 33vh;
+  padding-right: 52px;
+  white-space: pre-wrap;
+  overflow: auto;
+}
+
+.iconButton {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconButton::before {
+  content: "";
+  width: 1rem;
+  height: 1rem;
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.exportCopyButton {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+}
+
+.exportCopyButton::before {
+  -webkit-mask-image: url("icons/dup_all.svg");
+  mask-image: url("icons/dup_all.svg");
+}

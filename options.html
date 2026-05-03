@@ -131,6 +131,7 @@
                     </span>
                             </div>
                         </th>
+                        <th></th>
                     </tr>
                     <tr>
                         <th>
@@ -138,6 +139,20 @@
                         </th>
                         <th>
                             <button id="sortOutputButton" type="button" class="sortButton">Output</button>
+                        </th>
+                        <th>
+                            <span class="tableHeaderInline">
+                                <label class="check inlineCheck exportableHeaderCheck" for="toggleAllExportable">
+                                    <input id="toggleAllExportable" type="checkbox">
+                                    <span>Exportable?</span>
+                                </label>
+                                <span class="tooltipable columnSearchTooltip"
+                                      data-tooltip="Choose whether each saved word should be included in the export list. Use the checkbox here to turn them all on or off at once."
+                                      tabindex="0"
+                                      aria-label="Exportable help">
+                                    <span class="tooltipIcon" aria-hidden="true"></span>
+                                </span>
+                            </span>
                         </th>
                     </tr>
                     </thead>
@@ -157,6 +172,48 @@
             </div>
         </div>
 
+    </section>
+
+    <section class="card">
+        <h2>Export Chordable Words</h2>
+        <div class="exportControls">
+            <label class="fieldLabel exportThresholdField" for="minimumExportLength">
+                <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                      data-tooltip="Only include output that is at least this long. For example, 2 leaves out single-letter output such as 'a'.">
+                    <span>Minimum length:</span>
+                    <span class="tooltipIcon" aria-hidden="true"></span>
+                </span>
+                <div class="inlineFieldPair exportThresholdInputs">
+                    <input id="minimumExportLength" type="number" min="1" max="128" step="1" value="2">
+                    <span class="exportThresholdSuffix">character(s)</span>
+                </div>
+            </label>
+
+            <label class="fieldLabel" for="exportNonAlphanumericMode">
+                <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                      data-tooltip="Include all characters:&#10;Keeps every printable output, including punctuation and symbols.&#10;&#10;Ignore non-alphanumeric-only output:&#10;Leaves out output made entirely of punctuation, symbols, or spacing, but keeps output that has at least one letter or number.&#10;&#10;Ignore all outputs with non-alphanumerics:&#10;Leaves out any output that contains punctuation, symbols, or spacing anywhere in it.">
+                    <span>Non-alphanumeric output</span>
+                    <span class="tooltipIcon" aria-hidden="true"></span>
+                </span>
+                <select id="exportNonAlphanumericMode">
+                    <option value="include-all">Include all characters</option>
+                    <option value="ignore-only" selected>Ignore non-alphanumeric-only output</option>
+                    <option value="ignore-any">Ignore all outputs with non-alphanumerics</option>
+                </select>
+            </label>
+
+            <label class="check tooltipable" for="exportRespectExportable"
+                   data-tooltip="When this is on, the export list follows each row's Exportable setting. When it is off, the export ignores those row checkboxes.">
+                <input id="exportRespectExportable" type="checkbox" checked>
+                <span>Respect &quot;Exportable?&quot;</span>
+                <span class="tooltipIcon" aria-hidden="true"></span>
+            </label>
+        </div>
+
+        <div class="exportFieldWrap">
+            <button id="copyExportWordsButton" type="button" class="iconButton exportCopyButton" aria-label="Copy export words" title="Copy export words"></button>
+            <textarea id="exportWordsOutput" class="exportWordsOutput" readonly spellcheck="false" placeholder="No chordable words to export yet."></textarea>
+        </div>
     </section>
 
     <section class="saveSettingsCard">

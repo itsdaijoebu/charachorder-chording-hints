@@ -543,7 +543,8 @@
       outputText,
       normalizedOutput,
       userFlags: {
-        displayEnabled: userFlags?.displayEnabled !== false
+        displayEnabled: userFlags?.displayEnabled !== false,
+        exportable: userFlags?.exportable !== false
       },
       flags: {
         hasArpeggiate: nonZeroInput.includes(1001),
@@ -594,6 +595,7 @@
       typeof entry.normalizedOutput === "string" &&
       entry.userFlags &&
       typeof entry.userFlags === "object" &&
+      typeof entry.userFlags.exportable === "boolean" &&
       entry.flags &&
       typeof entry.flags === "object"
     );

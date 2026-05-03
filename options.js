@@ -2,6 +2,7 @@
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
         inputDisplayOverrides: "inputDisplayOverrides",
+        exportWordPreferences: "exportWordPreferences",
         settings: "settings",
         optionsSyncIntent: "optionsSyncIntent"
     };
@@ -22,6 +23,10 @@
     let hideNonAlphanumericOutputs = true;
     let inputSearchQuery = "";
     let outputSearchQuery = "";
+    let exportWordPreferences = {};
+    let minimumExportLength = 2;
+    let exportNonAlphanumericMode = "ignore-only";
+    let exportRespectExportable = true;
     let saveButtonsResetTimer = null;
     const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -89,11 +94,18 @@
         editingStatus: document.getElementById("editingStatus"),
         sortInputButton: document.getElementById("sortInputButton"),
         sortOutputButton: document.getElementById("sortOutputButton"),
+        toggleAllExportable: document.getElementById("toggleAllExportable"),
         prevPageButton: document.getElementById("prevPageButton"),
         nextPageButton: document.getElementById("nextPageButton"),
         pageJumpInput: document.getElementById("pageJumpInput"),
         pageJumpButton: document.getElementById("pageJumpButton"),
-        pageStatus: document.getElementById("pageStatus")
+        pageStatus: document.getElementById("pageStatus"),
+
+        minimumExportLength: document.getElementById("minimumExportLength"),
+        exportNonAlphanumericMode: document.getElementById("exportNonAlphanumericMode"),
+        exportRespectExportable: document.getElementById("exportRespectExportable"),
+        exportWordsOutput: document.getElementById("exportWordsOutput"),
+        copyExportWordsButton: document.getElementById("copyExportWordsButton")
     };
 
     const SERIAL_OUTPUT_ACTION_LABELS = {
@@ -557,6 +569,145 @@
         return visibleOutputCharacters(entry).length > 0;
     }
 
+    function normalizeMinimumExportLength(value) {
+        const parsed = Math.floor(Number(value));
+        if (!Number.isFinite(parsed)) return 2;
+        return Math.max(1, Math.min(128, parsed));
+    }
+
+    function exportTextForEntry(entry) {
+        return visibleOutputCharacters(entry);
+    }
+
+    function exportPreferenceKeyForEntry(entry) {
+        return exportTextForEntry(entry);
+    }
+
+    function normalizeExportWordPreferences(value) {
+        if (!value || typeof value !== "object" || Array.isArray(value)) {
+            return {};
+        }
+
+        const normalized = {};
+        Object.entries(value).forEach(([key, prefValue]) => {
+            if (typeof key !== "string") {
+                return;
+            }
+            normalized[key] = prefValue !== false;
+        });
+        return normalized;
+    }
+
+    function pruneExportWordPreferences(preferences, dictionary) {
+        const safePreferences = normalizeExportWordPreferences(preferences);
+        const validKeys = new Set((dictionary?.entries || []).map((entry) => exportPreferenceKeyForEntry(entry)));
+        const pruned = {};
+
+        Object.entries(safePreferences).forEach(([key, value]) => {
+            if (validKeys.has(key)) {
+                pruned[key] = value !== false;
+            }
+        });
+
+        return pruned;
+    }
+
+    function isExportWordEnabled(exportKey) {
+        return exportWordPreferences[String(exportKey ?? "")] !== false;
+    }
+
+    function isEntryExportable(entry) {
+        return isExportWordEnabled(exportPreferenceKeyForEntry(entry));
+    }
+
+    function isStrictlyAlphanumericWord(text) {
+        return /^[\p{L}\p{N}]+$/u.test(String(text || ""));
+    }
+
+    function hasAnyAlphanumericCharacter(text) {
+        return /[\p{L}\p{N}]/u.test(String(text || ""));
+    }
+
+    function normalizeExportNonAlphanumericMode(value) {
+        if (value === "include-all" || value === "ignore-any") {
+            return value;
+        }
+        return "ignore-only";
+    }
+
+    function updateExportableHeaderCheckbox() {
+        const uniqueKeys = Array.from(new Set((currentDictionary?.entries || []).map((entry) => exportPreferenceKeyForEntry(entry))));
+        const exportableCount = uniqueKeys.filter((key) => isExportWordEnabled(key)).length;
+
+        els.toggleAllExportable.indeterminate = exportableCount > 0 && exportableCount < uniqueKeys.length;
+        els.toggleAllExportable.checked = uniqueKeys.length > 0 && exportableCount === uniqueKeys.length;
+        els.toggleAllExportable.disabled = uniqueKeys.length === 0;
+    }
+
+    function exportedWordsForCurrentDictionary() {
+        const uniqueWords = new Set();
+        const entries = currentDictionary?.entries || [];
+        return entries
+            .map((entry) => ({
+                entry,
+                text: exportTextForEntry(entry)
+            }))
+            .filter(({entry, text}) => {
+                if (!text) {
+                    return false;
+                }
+                if (text.length < minimumExportLength) {
+                    return false;
+                }
+                if (exportNonAlphanumericMode === "ignore-only" && !hasAnyAlphanumericCharacter(text)) {
+                    return false;
+                }
+                if (exportNonAlphanumericMode === "ignore-any" && !isStrictlyAlphanumericWord(text)) {
+                    return false;
+                }
+                if (exportRespectExportable && !isEntryExportable(entry)) {
+                    return false;
+                }
+                if (uniqueWords.has(text)) {
+                    return false;
+                }
+                uniqueWords.add(text);
+                return true;
+            })
+            .sort((left, right) => {
+                const textCompare = left.text.localeCompare(right.text, undefined, {sensitivity: "variant"});
+                if (textCompare !== 0) {
+                    return textCompare;
+                }
+                return (left.entry?.index ?? 0) - (right.entry?.index ?? 0);
+            })
+            .map(({text}) => text);
+    }
+
+    function renderExportWords() {
+        els.exportWordsOutput.value = exportedWordsForCurrentDictionary().join(" ");
+        els.copyExportWordsButton.disabled = !els.exportWordsOutput.value;
+    }
+
+    async function copyExportWordsToClipboard() {
+        const text = els.exportWordsOutput.value || "";
+
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                els.exportWordsOutput.focus();
+                els.exportWordsOutput.select();
+                document.execCommand("copy");
+                els.exportWordsOutput.setSelectionRange(0, 0);
+            }
+            setStatus(els.importStatus, "Copied export words to clipboard.");
+        } catch (error) {
+            console.error(error);
+            setStatus(els.importStatus, "Failed to copy export words.", true);
+        }
+    }
+
     function renderOutputPreview(entry, settings) {
         const wrapper = document.createElement("div");
         wrapper.className = "hintPreview";
@@ -840,11 +991,39 @@
         return wrapper;
     }
 
+    function setExportWordEnabled(exportKey, enabled) {
+        exportWordPreferences = {
+            ...exportWordPreferences,
+            [String(exportKey ?? "")]: Boolean(enabled)
+        };
+        renderLoadedChords(currentSettingsFromForm());
+        void setStorage({[STORAGE_KEYS.exportWordPreferences]: exportWordPreferences}).catch(console.error);
+    }
+
+    function setAllEntriesExportable(exportable) {
+        const uniqueKeys = Array.from(new Set((currentDictionary?.entries || []).map((entry) => exportPreferenceKeyForEntry(entry))));
+        if (!uniqueKeys.length) {
+            return;
+        }
+
+        const nextValue = Boolean(exportable);
+        const nextPreferences = {...exportWordPreferences};
+        uniqueKeys.forEach((key) => {
+            nextPreferences[String(key ?? "")] = nextValue;
+        });
+
+        exportWordPreferences = nextPreferences;
+        renderLoadedChords(currentSettingsFromForm());
+        void setStorage({[STORAGE_KEYS.exportWordPreferences]: exportWordPreferences}).catch(console.error);
+    }
+
     function renderLoadedChords(settings) {
         const entries = currentDictionary?.entries || [];
 
         updateSortButtonLabels();
         updateEditingControls();
+        updateExportableHeaderCheckbox();
+        renderExportWords();
 
         if (!entries.length) {
             els.loadedChordsEmpty.hidden = false;
@@ -871,7 +1050,7 @@
         if (!pageEntries.length) {
             const tr = document.createElement("tr");
             const td = document.createElement("td");
-            td.colSpan = 2;
+            td.colSpan = 3;
             td.className = "muted";
             td.textContent = "No rows match the current filters.";
             tr.appendChild(td);
@@ -905,6 +1084,18 @@
             const tdOutput = document.createElement("td");
             tdOutput.appendChild(renderOutputPreview(entry, settings));
             tr.appendChild(tdOutput);
+
+            const tdExportable = document.createElement("td");
+            tdExportable.className = "exportableCell";
+            const exportableToggle = document.createElement("input");
+            exportableToggle.type = "checkbox";
+            exportableToggle.checked = isEntryExportable(entry);
+            exportableToggle.setAttribute("aria-label", `Toggle exportable for ${exportPreferenceKeyForEntry(entry) || entry.outputText || "entry"}`);
+            exportableToggle.addEventListener("change", () => {
+                setExportWordEnabled(exportPreferenceKeyForEntry(entry), exportableToggle.checked);
+            });
+            tdExportable.appendChild(exportableToggle);
+            tr.appendChild(tdExportable);
 
             els.loadedChordsTableBody.appendChild(tr);
         }
@@ -1887,12 +2078,15 @@
     }
 
     async function saveParsedDictionary(parsedDictionary, successMessage) {
+        const nextExportWordPreferences = pruneExportWordPreferences(exportWordPreferences, parsedDictionary);
         await setStorage({
             [STORAGE_KEYS.parsedDictionary]: parsedDictionary,
-            [STORAGE_KEYS.inputDisplayOverrides]: {}
+            [STORAGE_KEYS.inputDisplayOverrides]: {},
+            [STORAGE_KEYS.exportWordPreferences]: nextExportWordPreferences
         });
         currentRawDictionary = parsedDictionary;
         inputDisplayOverrides = {};
+        exportWordPreferences = nextExportWordPreferences;
         expandedEditorRows = new Set();
         draftInputEdits = {};
         currentPage = 1;
@@ -2018,10 +2212,11 @@
     async function clearDictionary() {
         try {
             setBusy(true);
-            await removeStorage([STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides]);
+            await removeStorage([STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides, STORAGE_KEYS.exportWordPreferences]);
             currentRawDictionary = null;
             currentDictionary = null;
             inputDisplayOverrides = {};
+            exportWordPreferences = {};
             expandedEditorRows = new Set();
             draftInputEdits = {};
             currentPage = 1;
@@ -2208,15 +2403,28 @@
         });
     }
 
+    function initializeExportControls() {
+        minimumExportLength = normalizeMinimumExportLength(els.minimumExportLength.value);
+        exportNonAlphanumericMode = normalizeExportNonAlphanumericMode(els.exportNonAlphanumericMode.value);
+        exportRespectExportable = els.exportRespectExportable.checked;
+        els.minimumExportLength.value = String(minimumExportLength);
+        els.exportNonAlphanumericMode.value = exportNonAlphanumericMode;
+    }
+
     async function loadInitialState() {
+        initializeExportControls();
+
         const stored = await getStorage([
             STORAGE_KEYS.parsedDictionary,
             STORAGE_KEYS.inputDisplayOverrides,
+            STORAGE_KEYS.exportWordPreferences,
             STORAGE_KEYS.settings
         ]);
         currentRawDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
         inputDisplayOverrides = stored[STORAGE_KEYS.inputDisplayOverrides] || {};
+        exportWordPreferences = normalizeExportWordPreferences(stored[STORAGE_KEYS.exportWordPreferences]);
         applyCurrentDictionary();
+        exportWordPreferences = pruneExportWordPreferences(exportWordPreferences, currentDictionary);
         const settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
 
         applySettingsToForm(settings);
@@ -2279,6 +2487,36 @@
         hideNonAlphanumericOutputs = els.hideNonAlphanumericOutputsToggle.checked;
         currentPage = 1;
         renderLoadedChords(currentSettingsFromForm());
+    });
+
+    els.toggleAllExportable.addEventListener("change", () => {
+        setAllEntriesExportable(els.toggleAllExportable.checked);
+    });
+
+    els.minimumExportLength.addEventListener("input", () => {
+        minimumExportLength = normalizeMinimumExportLength(els.minimumExportLength.value);
+        renderLoadedChords(currentSettingsFromForm());
+    });
+
+    els.minimumExportLength.addEventListener("change", () => {
+        minimumExportLength = normalizeMinimumExportLength(els.minimumExportLength.value);
+        els.minimumExportLength.value = String(minimumExportLength);
+        renderLoadedChords(currentSettingsFromForm());
+    });
+
+    els.exportNonAlphanumericMode.addEventListener("change", () => {
+        exportNonAlphanumericMode = normalizeExportNonAlphanumericMode(els.exportNonAlphanumericMode.value);
+        els.exportNonAlphanumericMode.value = exportNonAlphanumericMode;
+        renderLoadedChords(currentSettingsFromForm());
+    });
+
+    els.exportRespectExportable.addEventListener("change", () => {
+        exportRespectExportable = els.exportRespectExportable.checked;
+        renderLoadedChords(currentSettingsFromForm());
+    });
+
+    els.copyExportWordsButton.addEventListener("click", () => {
+        void copyExportWordsToClipboard();
     });
 
     els.inputSearchBox.addEventListener("input", () => {
