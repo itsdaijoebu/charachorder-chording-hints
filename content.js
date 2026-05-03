@@ -918,23 +918,49 @@
             .replace(/[^\p{L}\p{N}\s]+$/gu, "");
     }
 
-    function exactLookupKeysForText(rawText, strictNormalized = null) {
-        const keys = [];
+    function exactLookupCandidatesForText(rawText, strictNormalized = null, allowAnchor = false) {
+        const candidates = [];
         const safeStrictNormalized = typeof strictNormalized === "string"
             ? strictNormalized
             : CCHShared.normalizeTokenForLookup(rawText);
 
         if (safeStrictNormalized) {
-            keys.push(safeStrictNormalized);
+            candidates.push({
+                lookupKey: safeStrictNormalized,
+                matchNormalized: safeStrictNormalized,
+                anchor: null
+            });
         }
 
         const edgeStrippedText = stripPromptEdgeSpecialCharacters(rawText);
         const edgeStrippedNormalized = CCHShared.normalizeTokenForLookup(edgeStrippedText);
-        if (edgeStrippedNormalized && !keys.includes(edgeStrippedNormalized)) {
-            keys.push(edgeStrippedNormalized);
+        const strictWordCount = safeStrictNormalized
+            ? safeStrictNormalized.split(/\s+/u).filter(Boolean).length
+            : 0;
+        const edgeStrippedWordCount = edgeStrippedNormalized
+            ? edgeStrippedNormalized.split(/\s+/u).filter(Boolean).length
+            : 0;
+        if (
+            edgeStrippedNormalized &&
+            edgeStrippedWordCount === strictWordCount &&
+            !candidates.some((candidate) => candidate.lookupKey === edgeStrippedNormalized)
+        ) {
+            const start = allowAnchor ? safeStrictNormalized.indexOf(edgeStrippedNormalized) : -1;
+            candidates.push({
+                lookupKey: edgeStrippedNormalized,
+                matchNormalized: safeStrictNormalized,
+                anchor: start >= 0
+                    ? {
+                        type: "substring",
+                        start,
+                        end: start + edgeStrippedNormalized.length,
+                        wordLength: safeStrictNormalized.length
+                    }
+                    : null
+            });
         }
 
-        return keys;
+        return candidates;
     }
 
     function wordRecordHasLookupText(word) {
@@ -1768,9 +1794,9 @@
                 continue;
             }
 
-            const exactLookupKeys = exactLookupKeysForText(rawText, strictNormalized);
-            for (const normalized of exactLookupKeys) {
-                const chosen = chooseEntriesForNormalizedOutput(normalized);
+            const exactLookupCandidates = exactLookupCandidatesForText(rawText, strictNormalized, wordCount === 1);
+            for (const candidate of exactLookupCandidates) {
+                const chosen = chooseEntriesForNormalizedOutput(candidate.lookupKey);
                 if (!chosen) {
                     continue;
                 }
@@ -1779,7 +1805,7 @@
                         matched: false,
                         reason: "filtered-out",
                         word: rawText,
-                        normalized,
+                        normalized: candidate.matchNormalized,
                         wordCount
                     };
                 }
@@ -1787,8 +1813,8 @@
                 return {
                     matched: true,
                     word: rawText,
-                    normalized,
-                    labels: [{ entries: chosen, anchor: null }],
+                    normalized: candidate.matchNormalized,
+                    labels: [{ entries: chosen, anchor: candidate.anchor }],
                     wordCount,
                     isSubstringMatch: false
                 };
