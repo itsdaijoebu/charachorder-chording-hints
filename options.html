@@ -177,7 +177,7 @@
     <section class="card" data-collapsed-default="true">
         <h2>
             <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
-                  data-tooltip="Easily copy-paste your chord list into a custom session (on MonkeyType, etc) to focus only on your chordable words">
+                  data-tooltip="Easily copy-paste a list of your chordable words into a custom session (on MonkeyType, etc) to focus only on your chordable words">
                 <span>Export Chordable Words</span>
                 <span class="tooltipIcon" aria-hidden="true"></span>
             </span>
@@ -361,6 +361,32 @@
                                                            type="checkbox"><span>Enable debug logging</span></label>
             <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions"
                                                                               type="checkbox"><span>Show extended special-token descriptions</span></label>
+        </div>
+    </section>
+
+    <section class="card" data-collapsed-default="true">
+        <h2>
+            <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
+                  data-tooltip="Hotkeys only work while on supported typing sites and do nothing elsewhere.&#10;&#10;After recording a new hotkey, click 'Save settings' to make it take effect.">
+                <span>Hotkeys</span>
+                <span class="tooltipIcon" aria-hidden="true"></span>
+            </span>
+        </h2>
+        <div class="hotkeySection">
+            <div class="hotkeyRow">
+                <div>
+                    <div class="hotkeyLabel">Toggle hints</div>
+                    <div class="muted hotkeyDescription">Turns hints on or off.</div>
+                </div>
+                <button id="recordToggleHintsHotkeyButton" type="button" class="secondary">Loading...</button>
+            </div>
+            <div class="hotkeyRow">
+                <div>
+                    <div class="hotkeyLabel">Toggle hint display</div>
+                    <div class="muted hotkeyDescription">Show or hide chord hints.</div>
+                </div>
+                <button id="recordToggleHintDisplayHotkeyButton" type="button" class="secondary">Loading...</button>
+            </div>
         </div>
     </section>
 

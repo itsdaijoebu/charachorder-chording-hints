@@ -888,6 +888,159 @@
     return value === "charachorder-default" ? "charachorder-default" : "best-match";
   }
 
+  function canonicalizeHotkeyKey(key, code = "") {
+    const normalizedKey = String(key || "").toLowerCase();
+    const normalizedCode = String(code || "").toLowerCase();
+
+    if (
+      normalizedCode === "space" ||
+      normalizedKey === " " ||
+      normalizedKey === "spacebar" ||
+      normalizedKey === "space"
+    ) {
+      return "space";
+    }
+
+    if (normalizedCode === "equal") {
+      return "=";
+    }
+
+    if (normalizedCode === "minus") {
+      return "-";
+    }
+
+    if (normalizedCode === "escape" || normalizedKey === "esc") {
+      return "escape";
+    }
+
+    if (normalizedCode === "enter" || normalizedKey === "return") {
+      return "enter";
+    }
+
+    if (normalizedCode === "tab") {
+      return "tab";
+    }
+
+    if (normalizedKey === "backspace") {
+      return "backspace";
+    }
+
+    if (["arrowleft", "left"].includes(normalizedKey) || normalizedCode === "arrowleft") {
+      return "arrowleft";
+    }
+
+    if (["arrowup", "up"].includes(normalizedKey) || normalizedCode === "arrowup") {
+      return "arrowup";
+    }
+
+    if (["arrowdown", "down"].includes(normalizedKey) || normalizedCode === "arrowdown") {
+      return "arrowdown";
+    }
+
+    if (["arrowright", "right"].includes(normalizedKey) || normalizedCode === "arrowright") {
+      return "arrowright";
+    }
+
+    return normalizedKey;
+  }
+
+  function normalizeHotkey(value) {
+    return {
+      key: canonicalizeHotkeyKey(value?.key, value?.code),
+      ctrlKey: Boolean(value?.ctrlKey),
+      altKey: Boolean(value?.altKey),
+      shiftKey: Boolean(value?.shiftKey),
+      metaKey: Boolean(value?.metaKey)
+    };
+  }
+
+  function mergeHotkey(value, fallback) {
+    const base = normalizeHotkey(fallback);
+    const candidate = value && typeof value === "object" ? value : {};
+    return normalizeHotkey({
+      ...base,
+      ...candidate
+    });
+  }
+
+  function eventToHotkey(event) {
+    if (!event) return null;
+
+    const key = canonicalizeHotkeyKey(event.key, event.code);
+    if (!key || ["control", "shift", "alt", "meta"].includes(key)) {
+      return null;
+    }
+
+    return normalizeHotkey({
+      key,
+      ctrlKey: event.ctrlKey,
+      altKey: event.altKey,
+      shiftKey: event.shiftKey,
+      metaKey: event.metaKey
+    });
+  }
+
+  function isModifierOnlyHotkey(hotkey) {
+    return !hotkey || !hotkey.key || ["control", "shift", "alt", "meta"].includes(hotkey.key);
+  }
+
+  function formatHotkey(hotkey) {
+    const normalized = normalizeHotkey(hotkey);
+    const parts = [];
+
+    if (normalized.ctrlKey) parts.push("Ctrl");
+    if (normalized.altKey) parts.push("Alt");
+    if (normalized.shiftKey) parts.push("Shift");
+    if (normalized.metaKey) parts.push("Meta");
+
+    if (normalized.key) {
+      if (normalized.key === "space") {
+        parts.push("Space");
+      } else if (normalized.key === "backspace") {
+        parts.push("Backspace");
+      } else if (normalized.key === "escape") {
+        parts.push("Escape");
+      } else if (normalized.key === "enter") {
+        parts.push("Enter");
+      } else if (normalized.key === "tab") {
+        parts.push("Tab");
+      } else if (normalized.key === "arrowleft") {
+        parts.push("Left");
+      } else if (normalized.key === "arrowup") {
+        parts.push("Up");
+      } else if (normalized.key === "arrowdown") {
+        parts.push("Down");
+      } else if (normalized.key === "arrowright") {
+        parts.push("Right");
+      } else {
+        parts.push(
+          normalized.key.length === 1
+            ? normalized.key.toUpperCase()
+            : normalized.key[0].toUpperCase() + normalized.key.slice(1)
+        );
+      }
+    }
+
+    return parts.join("+") || "Unassigned";
+  }
+
+  function hotkeyMatchesEvent(event, hotkey) {
+    if (!event) return false;
+
+    const normalized = normalizeHotkey(hotkey);
+    if (isModifierOnlyHotkey(normalized)) {
+      return false;
+    }
+
+    return (
+      canonicalizeHotkeyKey(event.key, event.code) === normalized.key &&
+      Boolean(event.ctrlKey) === normalized.ctrlKey &&
+      Boolean(event.altKey) === normalized.altKey &&
+      Boolean(event.shiftKey) === normalized.shiftKey &&
+      Boolean(event.metaKey) === normalized.metaKey
+    );
+  }
+
   function defaultExportFilterSettings() {
     return {
       minimumExportLength: 2,
@@ -1133,7 +1286,21 @@
       hint_text_font_size_em: 0.5,
       hint_position: "left",
       hint_display: "always",
-      keybr_hint_layout: "extra-spacing"
+      keybr_hint_layout: "extra-spacing",
+      toggleHintsHotkey: {
+        key: "h",
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: true,
+        metaKey: false
+      },
+      toggleHintDisplayHotkey: {
+        key: "s",
+        ctrlKey: true,
+        altKey: true,
+        shiftKey: true,
+        metaKey: false
+      }
     };
   }
 
@@ -1157,6 +1324,13 @@
     buildExportWordsCsv,
     normalizeMinimumWordLength,
     normalizeHintCharacterOrderMode,
+    canonicalizeHotkeyKey,
+    normalizeHotkey,
+    mergeHotkey,
+    eventToHotkey,
+    isModifierOnlyHotkey,
+    formatHotkey,
+    hotkeyMatchesEvent,
     reorderSegmentTokensForBestMatch,
     chooseEntries,
     normalizeTokenForLookup,

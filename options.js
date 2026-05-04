@@ -29,8 +29,14 @@
     let minimumExportLength = 2;
     let exportNonAlphanumericMode = "ignore-only";
     let exportRespectExportable = true;
+    let draftSettings = hydrateSettings(CCHShared.defaultSettings());
+    let recordingHotkeyTarget = null;
     let saveButtonsResetTimer = null;
     const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const HOTKEY_BINDINGS = [
+        ["toggleHintsHotkey", "recordToggleHintsHotkeyButton"],
+        ["toggleHintDisplayHotkey", "recordToggleHintDisplayHotkeyButton"]
+    ];
 
     applyOptionsTheme("system");
 
@@ -71,6 +77,9 @@
         hintPreviewLight: document.getElementById("hintPreviewLight"),
         hintPreviewWordDark: document.getElementById("hintPreviewWordDark"),
         hintPreviewWordLight: document.getElementById("hintPreviewWordLight"),
+
+        recordToggleHintsHotkeyButton: document.getElementById("recordToggleHintsHotkeyButton"),
+        recordToggleHintDisplayHotkeyButton: document.getElementById("recordToggleHintDisplayHotkeyButton"),
 
         saveSettingsButton: document.getElementById("saveSettingsButton"),
         saveSettingsButtonSecondary: document.getElementById("saveSettingsButtonSecondary"),
@@ -285,8 +294,9 @@
     }
 
     function hydrateSettings(rawSettings) {
+        const defaults = CCHShared.defaultSettings();
         const settings = {
-            ...CCHShared.defaultSettings(),
+            ...defaults,
             themeMode: "system",
             ...(rawSettings || {})
         };
@@ -330,6 +340,12 @@
         settings.keybr_hint_layout = ["consistent", "extra-spacing"].includes(settings.keybr_hint_layout)
             ? settings.keybr_hint_layout
             : "extra-spacing";
+        settings.toggleHintsHotkey = CCHShared.mergeHotkey
+            ? CCHShared.mergeHotkey(settings.toggleHintsHotkey, defaults.toggleHintsHotkey)
+            : (settings.toggleHintsHotkey || defaults.toggleHintsHotkey);
+        settings.toggleHintDisplayHotkey = CCHShared.mergeHotkey
+            ? CCHShared.mergeHotkey(settings.toggleHintDisplayHotkey, defaults.toggleHintDisplayHotkey)
+            : (settings.toggleHintDisplayHotkey || defaults.toggleHintDisplayHotkey);
         delete settings.chordable_word_display;
 
         return settings;
@@ -1082,7 +1098,8 @@
     function currentSettingsFromForm() {
         const defaults = CCHShared.defaultSettings();
 
-        return {
+        return hydrateSettings({
+            ...draftSettings,
             themeMode: themeModeFromControls(),
             selectionMode: els.selectionMode.value,
             enabled: els.enabled.checked,
@@ -1125,7 +1142,9 @@
             keybr_hint_layout: ["consistent", "extra-spacing"].includes(els.keybrHintLayout.value)
                 ? els.keybrHintLayout.value
                 : "extra-spacing",
-        };
+            toggleHintsHotkey: draftSettings.toggleHintsHotkey,
+            toggleHintDisplayHotkey: draftSettings.toggleHintDisplayHotkey
+        });
     }
 
     
@@ -1160,6 +1179,7 @@
     }
 
     function applySettingsToForm(settings) {
+        draftSettings = hydrateSettings(settings);
         syncThemeControls(settings.themeMode || "system");
         applyOptionsTheme(settings.themeMode || "system");
         els.selectionMode.value = settings.selectionMode;
@@ -1189,8 +1209,61 @@
         els.hintDisplay.value = settings.hint_display || "always";
         els.keybrHintLayout.value = settings.keybr_hint_layout || "extra-spacing";
         syncHintTextSizeFieldBehavior();
+        updateHotkeyButtonLabels();
 
         updateAppearancePreview(settings);
+    }
+
+    function updateHotkeyButtonLabels() {
+        HOTKEY_BINDINGS.forEach(([settingKey, buttonKey]) => {
+            const button = els[buttonKey];
+            if (!button) return;
+
+            button.textContent = recordingHotkeyTarget === settingKey
+                ? "Press hotkey..."
+                : CCHShared.formatHotkey(draftSettings[settingKey]);
+            button.classList.toggle("isRecording", recordingHotkeyTarget === settingKey);
+        });
+    }
+
+    function beginHotkeyRecording(settingKey) {
+        recordingHotkeyTarget = settingKey;
+        updateHotkeyButtonLabels();
+        setStatus(els.settingsStatus, "Press the hotkey combination you want to use. Press Escape to cancel.");
+    }
+
+    function stopHotkeyRecording() {
+        recordingHotkeyTarget = null;
+        updateHotkeyButtonLabels();
+    }
+
+    function handleHotkeyRecordingKeydown(event) {
+        if (!recordingHotkeyTarget) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+            stopHotkeyRecording();
+            setStatus(els.settingsStatus, "Hotkey recording cancelled.");
+            return;
+        }
+
+        const hotkey = CCHShared.eventToHotkey(event);
+        if (CCHShared.isModifierOnlyHotkey(hotkey)) {
+            setStatus(els.settingsStatus, "Use at least one non-modifier key.", true);
+            return;
+        }
+
+        draftSettings = hydrateSettings({
+            ...draftSettings,
+            [recordingHotkeyTarget]: hotkey
+        });
+        stopHotkeyRecording();
+        setStatus(
+            els.settingsStatus,
+            `Recorded ${CCHShared.formatHotkey(hotkey)}. Save settings to apply.`
+        );
     }
 
     function updateAppearancePreview(settings) {
@@ -2271,7 +2344,9 @@
 
     async function saveSettings() {
         try {
+            stopHotkeyRecording();
             const settings = currentSettingsFromForm();
+            draftSettings = settings;
             await setStorage({[STORAGE_KEYS.settings]: settings});
             renderLoadedChords(settings);
             setStatus(els.settingsStatus, "");
@@ -2291,6 +2366,7 @@
 
         try {
             setBusy(true);
+            stopHotkeyRecording();
             const defaults = hydrateSettings(CCHShared.defaultSettings());
             const defaultExportFilterSettings = CCHShared.hydrateExportFilterSettings(DEFAULT_EXPORT_FILTER_SETTINGS);
             applySettingsToForm(defaults);
@@ -2440,6 +2516,8 @@
             applyOptionsTheme("system");
         }
     });
+
+    document.addEventListener("keydown", handleHotkeyRecordingKeydown, true);
     
     els.importButton.addEventListener("click", importJson);
     els.syncDeviceButton.addEventListener("click", syncFromDevice);
@@ -2452,6 +2530,13 @@
 
     els.optionsThemeToggle.addEventListener("change", handleThemeControlsChanged);
     els.optionsUseSystemTheme.addEventListener("change", handleThemeControlsChanged);
+    HOTKEY_BINDINGS.forEach(([settingKey, buttonKey]) => {
+        const button = els[buttonKey];
+        if (!button) return;
+        button.addEventListener("click", () => {
+            beginHotkeyRecording(settingKey);
+        });
+    });
     els.saveSettingsButton.addEventListener("click", saveSettings);
     if (els.saveSettingsButtonSecondary) els.saveSettingsButtonSecondary.addEventListener("click", saveSettings);
     if (els.returnToDefaultsButton) els.returnToDefaultsButton.addEventListener("click", resetSettingsToDefaults);

@@ -35,9 +35,13 @@
         popupDarkPreviewWord: document.getElementById("popupDarkPreviewWord"),
         popupEnabledButton: document.getElementById("popupEnabledButton"),
         popupAppearanceTab: document.getElementById("popupAppearanceTab"),
+        popupHotkeysTab: document.getElementById("popupHotkeysTab"),
         popupChordableWordsTab: document.getElementById("popupChordableWordsTab"),
         popupAppearancePanel: document.getElementById("popupAppearancePanel"),
+        popupHotkeysPanel: document.getElementById("popupHotkeysPanel"),
         popupChordableWordsPanel: document.getElementById("popupChordableWordsPanel"),
+        popupRecordToggleHintsHotkeyButton: document.getElementById("popupRecordToggleHintsHotkeyButton"),
+        popupRecordToggleHintDisplayHotkeyButton: document.getElementById("popupRecordToggleHintDisplayHotkeyButton"),
         popupMinimumExportLength: document.getElementById("popupMinimumExportLength"),
         popupExportNonAlphanumericMode: document.getElementById("popupExportNonAlphanumericMode"),
         popupExportRespectExportable: document.getElementById("popupExportRespectExportable"),
@@ -62,6 +66,11 @@
     let resetConfirmTimer = null;
     let resetConfirmationArmed = false;
     let resetConfirmationCleanup = null;
+    let recordingHotkeyTarget = null;
+    const HOTKEY_BINDINGS = [
+        ["toggleHintsHotkey", "popupRecordToggleHintsHotkeyButton"],
+        ["toggleHintDisplayHotkey", "popupRecordToggleHintDisplayHotkeyButton"]
+    ];
 
     function getStorage(keys) {
         return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -214,8 +223,9 @@
     }
 
     function hydrateSettings(rawSettings) {
+        const defaults = CCHShared.defaultSettings();
         const settings = {
-            ...CCHShared.defaultSettings(),
+            ...defaults,
             ...(rawSettings || {})
         };
         settings.specialTokenDescriptions = {
@@ -249,6 +259,12 @@
         settings.keybr_hint_layout = ["consistent", "extra-spacing"].includes(settings.keybr_hint_layout)
             ? settings.keybr_hint_layout
             : "extra-spacing";
+        settings.toggleHintsHotkey = CCHShared.mergeHotkey
+            ? CCHShared.mergeHotkey(settings.toggleHintsHotkey, defaults.toggleHintsHotkey)
+            : (settings.toggleHintsHotkey || defaults.toggleHintsHotkey);
+        settings.toggleHintDisplayHotkey = CCHShared.mergeHotkey
+            ? CCHShared.mergeHotkey(settings.toggleHintDisplayHotkey, defaults.toggleHintDisplayHotkey)
+            : (settings.toggleHintDisplayHotkey || defaults.toggleHintDisplayHotkey);
         delete settings.chordable_word_display;
         return settings;
     }
@@ -397,6 +413,7 @@
     }
 
     function applySettingsToForm(settings) {
+        draftSettings = hydrateSettings(settings);
         syncThemeControls(settings.themeMode || "system");
         applyPopupTheme(settings.themeMode || "system");
         els.popupHintBoxDarkModeColor.value = settings.hint_box_dark_mode_color;
@@ -414,9 +431,22 @@
         els.popupShowChordableWordOutlines.checked = settings.showChordableWordOutlines;
         els.popupMinimumWordLength.value = settings.minimumWordLength;
         els.popupHintCharacterOrderMode.value = settings.hintCharacterOrderMode;
+        updateHotkeyButtonLabels();
         syncHintTextSizeFieldBehavior();
         updateAppearancePreview();
         updateEnabledButton(settings.enabled);
+    }
+
+    function updateHotkeyButtonLabels() {
+        HOTKEY_BINDINGS.forEach(([settingKey, buttonKey]) => {
+            const button = els[buttonKey];
+            if (!button) return;
+
+            button.textContent = recordingHotkeyTarget === settingKey
+                ? "Press hotkey..."
+                : CCHShared.formatHotkey(draftSettings[settingKey]);
+            button.classList.toggle("isRecording", recordingHotkeyTarget === settingKey);
+        });
     }
 
     function currentSettingsFromForm() {
@@ -551,13 +581,20 @@
     }
 
     function switchTab(tabName) {
-        activeTab = tabName === "chordable-words" ? "chordable-words" : "appearance";
-        const showingAppearance = activeTab === "appearance";
+        if (tabName === "hotkeys") {
+            activeTab = "hotkeys";
+        } else if (tabName === "chordable-words") {
+            activeTab = "chordable-words";
+        } else {
+            activeTab = "appearance";
+        }
 
-        els.popupAppearanceTab.setAttribute("aria-selected", showingAppearance ? "true" : "false");
-        els.popupChordableWordsTab.setAttribute("aria-selected", showingAppearance ? "false" : "true");
-        els.popupAppearancePanel.hidden = !showingAppearance;
-        els.popupChordableWordsPanel.hidden = showingAppearance;
+        els.popupAppearanceTab.setAttribute("aria-selected", activeTab === "appearance" ? "true" : "false");
+        els.popupHotkeysTab.setAttribute("aria-selected", activeTab === "hotkeys" ? "true" : "false");
+        els.popupChordableWordsTab.setAttribute("aria-selected", activeTab === "chordable-words" ? "true" : "false");
+        els.popupAppearancePanel.hidden = activeTab !== "appearance";
+        els.popupHotkeysPanel.hidden = activeTab !== "hotkeys";
+        els.popupChordableWordsPanel.hidden = activeTab !== "chordable-words";
     }
 
     async function openTab(tabName) {
@@ -581,6 +618,43 @@
             els.popupExportWordsOutput.placeholder = "Failed to load chordable words.";
             setStatus("Failed to load chordable words.", true);
         }
+    }
+
+    function beginHotkeyRecording(settingKey) {
+        recordingHotkeyTarget = settingKey;
+        updateHotkeyButtonLabels();
+        setStatus("Press the hotkey combination you want to use. Press Escape to cancel.");
+    }
+
+    function stopHotkeyRecording() {
+        recordingHotkeyTarget = null;
+        updateHotkeyButtonLabels();
+    }
+
+    function handleHotkeyRecordingKeydown(event) {
+        if (!recordingHotkeyTarget) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (event.key === "Escape" && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+            stopHotkeyRecording();
+            setStatus("Hotkey recording cancelled.");
+            return;
+        }
+
+        const hotkey = CCHShared.eventToHotkey(event);
+        if (CCHShared.isModifierOnlyHotkey(hotkey)) {
+            setStatus("Use at least one non-modifier key.", true);
+            return;
+        }
+
+        draftSettings = hydrateSettings({
+            ...draftSettings,
+            [recordingHotkeyTarget]: hotkey
+        });
+        stopHotkeyRecording();
+        setStatus(`Recorded ${CCHShared.formatHotkey(hotkey)}. Save settings to apply.`);
     }
 
     function updateEnabledButton(enabled) {
@@ -658,6 +732,7 @@
     async function saveSettings() {
         clearResetConfirmation();
         try {
+            stopHotkeyRecording();
             draftSettings = currentSettingsFromForm();
             applyPopupTheme(draftSettings.themeMode || "system");
             await setStorage({[STORAGE_KEYS.settings]: draftSettings});
@@ -677,6 +752,7 @@
 
         clearResetConfirmation();
         try {
+            stopHotkeyRecording();
             draftSettings = hydrateSettings(CCHShared.defaultSettings());
             const defaultExportFilterSettings = CCHShared.hydrateExportFilterSettings(DEFAULT_EXPORT_FILTER_SETTINGS);
             applySettingsToForm(draftSettings);
@@ -711,6 +787,8 @@
         }
     });
 
+    document.addEventListener("keydown", handleHotkeyRecordingKeydown, true);
+
     function handleThemeControlsChanged() {
         const themeMode = themeModeFromControls();
         syncThemeControls(themeMode);
@@ -723,8 +801,18 @@
     els.popupAppearanceTab.addEventListener("click", () => {
         void openTab("appearance");
     });
+    els.popupHotkeysTab.addEventListener("click", () => {
+        void openTab("hotkeys");
+    });
     els.popupChordableWordsTab.addEventListener("click", () => {
         void openTab("chordable-words");
+    });
+    HOTKEY_BINDINGS.forEach(([settingKey, buttonKey]) => {
+        const button = els[buttonKey];
+        if (!button) return;
+        button.addEventListener("click", () => {
+            beginHotkeyRecording(settingKey);
+        });
     });
 
     [

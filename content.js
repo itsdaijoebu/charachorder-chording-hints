@@ -515,9 +515,14 @@
         return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
     }
 
+    function setStorage(values) {
+        return new Promise((resolve) => chrome.storage.local.set(values, resolve));
+    }
+
     function hydrateSettings(rawSettings) {
+        const defaults = CCHShared.defaultSettings();
         const merged = {
-            ...CCHShared.defaultSettings(),
+            ...defaults,
             ...(rawSettings || {})
         };
 
@@ -547,6 +552,12 @@
         merged.keybr_hint_layout = ["consistent", "extra-spacing"].includes(merged.keybr_hint_layout)
             ? merged.keybr_hint_layout
             : "extra-spacing";
+        merged.toggleHintsHotkey = CCHShared.mergeHotkey
+            ? CCHShared.mergeHotkey(merged.toggleHintsHotkey, defaults.toggleHintsHotkey)
+            : (merged.toggleHintsHotkey || defaults.toggleHintsHotkey);
+        merged.toggleHintDisplayHotkey = CCHShared.mergeHotkey
+            ? CCHShared.mergeHotkey(merged.toggleHintDisplayHotkey, defaults.toggleHintDisplayHotkey)
+            : (merged.toggleHintDisplayHotkey || defaults.toggleHintDisplayHotkey);
         delete merged.chordable_word_display;
 
         return merged;
@@ -1883,6 +1894,48 @@
             toggleHintDisplay(target);
         }, true);
         STATE.hintLabelClickDelegationInstalled = true;
+    }
+
+    async function persistSettingsFromHotkey(nextSettings) {
+        const hydrated = hydrateSettings(nextSettings);
+        STATE.settings = hydrated;
+        applyAppearanceSettings();
+        resetHintLabelTemplateCache("hotkey-settings-change");
+        scheduleAnnotation(true);
+        await setStorage({ [STORAGE_KEYS.settings]: hydrated });
+    }
+
+    function handleGlobalHotkeyKeydown(event) {
+        if (event.repeat || !currentSiteAdapter()) {
+            return;
+        }
+
+        let nextSettings = null;
+        if (CCHShared.hotkeyMatchesEvent(event, STATE.settings.toggleHintsHotkey)) {
+            nextSettings = {
+                ...STATE.settings,
+                enabled: !STATE.settings.enabled
+            };
+        } else if (CCHShared.hotkeyMatchesEvent(event, STATE.settings.toggleHintDisplayHotkey)) {
+            nextSettings = {
+                ...STATE.settings,
+                hint_display: STATE.settings.hint_display === "hover" ? "always" : "hover"
+            };
+        }
+
+        if (!nextSettings) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        void persistSettingsFromHotkey(nextSettings).catch((error) => {
+            console.error("[CCH] hotkey toggle failed", error);
+        });
+    }
+
+    function installGlobalHotkeys() {
+        window.addEventListener("keydown", handleGlobalHotkeyKeydown, true);
     }
 
     function createHintLabel(entries, outputText) {
@@ -3823,6 +3876,7 @@
             pathname: location.pathname
         });
         installHintLabelClickDelegation();
+        installGlobalHotkeys();
         installLocationObserver();
         installContainerObserver();
         scheduleAnnotation(true);

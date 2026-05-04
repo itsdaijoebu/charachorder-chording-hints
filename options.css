@@ -971,6 +971,14 @@ input[type="color"]::-moz-color-swatch {
   margin-bottom: 4px;
 }
 
+.hotkeyDescription {
+  font-size: 0.94rem;
+}
+
+.hotkeyRow > button {
+  min-width: 180px;
+}
+
 .isRecording {
   outline: 2px solid currentColor;
 }

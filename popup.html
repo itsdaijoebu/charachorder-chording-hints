@@ -34,8 +34,10 @@
     <section class="popupCard">
         <div class="popupTabRow" role="tablist" aria-label="Popup sections">
             <button id="popupAppearanceTab" type="button" class="popupTabButton" role="tab" aria-selected="true" aria-controls="popupAppearancePanel">Settings</button>
-            <button id="popupChordableWordsTab" type="button" class="popupTabButton tooltipable" role="tab" aria-selected="false" aria-controls="popupChordableWordsPanel"
-                    data-tooltip="Easily copy-paste your chord list into a custom session (on MonkeyType, etc) to focus only on your chordable words">Chordable Words</button>
+            <button id="popupHotkeysTab" type="button" class="popupTabButton tooltipable" role="tab" aria-selected="false" aria-controls="popupHotkeysPanel"
+                    data-tooltip="Hotkeys only work while on supported typing sites and do nothing elsewhere.&#10;&#10;After recording a new hotkey, click 'Save settings' to make it take effect.">Hotkeys</button>
+            <button id="popupChordableWordsTab" type="button" class="popupTabButton tooltipable tooltipShiftLeft" role="tab" aria-selected="false" aria-controls="popupChordableWordsPanel"
+                    data-tooltip="Easily copy-paste a list of your chordable words into a custom session (on MonkeyType, etc) to focus only on your chordable words">Chordable Words</button>
         </div>
 
         <section id="popupAppearancePanel" class="popupTabPanel" role="tabpanel" aria-labelledby="popupAppearanceTab">
@@ -143,6 +145,27 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+        </section>
+
+        <section id="popupHotkeysPanel" class="popupTabPanel" role="tabpanel" aria-labelledby="popupHotkeysTab" hidden>
+            <section class="popupSubsection popupSubsectionFlush">
+                <div class="popupHotkeySection">
+                    <div class="popupHotkeyRow">
+                        <div>
+                            <div class="popupHotkeyLabel">Toggle hints</div>
+                            <div class="popupHotkeyDescription">Turns hints on or off.</div>
+                        </div>
+                        <button id="popupRecordToggleHintsHotkeyButton" type="button" class="secondary">Loading...</button>
+                    </div>
+                    <div class="popupHotkeyRow">
+                        <div>
+                            <div class="popupHotkeyLabel">Toggle hint display</div>
+                            <div class="popupHotkeyDescription">Show or hide chord hints.</div>
+                        </div>
+                        <button id="popupRecordToggleHintDisplayHotkeyButton" type="button" class="secondary">Loading...</button>
                     </div>
                 </div>
             </section>
