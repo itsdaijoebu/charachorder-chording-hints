@@ -7,6 +7,14 @@
     const ANNOTATION_CHUNK_DEFERRED_MAX_STARTS = 120;
     const ANNOTATION_CHUNK_DEFERRED_BUDGET_MS = 14;
     const HINT_LABEL_TEMPLATE_CACHE_LIMIT = 512;
+    const NAIVE_MODIFIER_DEFINITIONS = [
+        { suffix: "ing", key: "ambileft_left" },
+        { suffix: "es", key: "ambiright_right" },
+        { suffix: "ed", key: "layer2_left", eEndingCompactSuffix: "d" },
+        { suffix: "er", key: "layer2_right", eEndingCompactSuffix: "r" },
+        { suffix: "s", key: "ambiright_right" }
+    ];
+    const MODIFIER_PSEUDO_ENTRY_CACHE = new Map();
 
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
@@ -532,6 +540,7 @@
         };
 
         merged.enableSubstringHints = Boolean(merged.enableSubstringHints);
+        merged.enableNaiveModifierHints = Boolean(merged.enableNaiveModifierHints);
         merged.suppressAffixMatchingInMiddleOfWords = Boolean(merged.suppressAffixMatchingInMiddleOfWords);
         merged.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(merged.minimumWordLength)
@@ -927,6 +936,215 @@
         return String(text || "")
             .replace(/^[^\p{L}\p{N}\s]+/gu, "")
             .replace(/[^\p{L}\p{N}\s]+$/gu, "");
+    }
+
+    function codePointsForText(text) {
+        return Array.from(String(text || ""))
+            .map((char) => char.codePointAt(0))
+            .filter((code) => Number.isFinite(code));
+    }
+
+    function modifierPseudoEntry(modifierKey, suffixText) {
+        const cacheKey = `${modifierKey}:${suffixText}`;
+        const cached = MODIFIER_PSEUDO_ENTRY_CACHE.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const token = CCHShared.makePseudoSpecialToken(modifierKey, modifierKey);
+        const entry = CCHShared.buildEntry({
+            index: -1,
+            inputSegments: [{
+                index: 0,
+                kind: "decoded",
+                inputCodes: [],
+                inputTokens: [token],
+                rawInput: `(${modifierKey})`,
+                editableText: "",
+                sortText: `(${modifierKey})`
+            }],
+            outputCodes: codePointsForText(suffixText),
+            status: 0,
+            userFlags: { displayEnabled: true }
+        });
+
+        MODIFIER_PSEUDO_ENTRY_CACHE.set(cacheKey, entry);
+        return entry;
+    }
+
+    function allowedModifierTexts(definition, baseEndsWithE) {
+        const variants = [definition.suffix];
+        if (baseEndsWithE && definition.eEndingCompactSuffix) {
+            variants.push(definition.eEndingCompactSuffix);
+        }
+        return variants;
+    }
+
+    function shiftModifierChain(chain, offset) {
+        return (Array.isArray(chain) ? chain : []).map((modifier) => ({
+            ...modifier,
+            start: modifier.start + offset,
+            end: modifier.end + offset
+        }));
+    }
+
+    function collectModifierChainsFromTrailingText(text, baseEndsWithE, memo = new Map()) {
+        const safeText = String(text || "");
+        const memoKey = `${baseEndsWithE ? "1" : "0"}:${safeText}`;
+        if (memo.has(memoKey)) {
+            return memo.get(memoKey);
+        }
+
+        if (!safeText) {
+            const baseChains = [[]];
+            memo.set(memoKey, baseChains);
+            return baseChains;
+        }
+
+        const chains = [];
+        NAIVE_MODIFIER_DEFINITIONS.forEach((definition) => {
+            allowedModifierTexts(definition, baseEndsWithE).forEach((matchedText) => {
+                if (!safeText.startsWith(matchedText)) {
+                    return;
+                }
+
+                const remainder = safeText.slice(matchedText.length);
+                collectModifierChainsFromTrailingText(remainder, baseEndsWithE, memo).forEach((remainderChain) => {
+                    chains.push([
+                        {
+                            ...definition,
+                            matchedText,
+                            start: 0,
+                            end: matchedText.length
+                        },
+                        ...shiftModifierChain(remainderChain, matchedText.length)
+                    ]);
+                });
+            });
+        });
+
+        memo.set(memoKey, chains);
+        return chains;
+    }
+
+    function compareModifierChains(left, right) {
+        const leftModifiers = Array.isArray(left) ? left : [];
+        const rightModifiers = Array.isArray(right) ? right : [];
+
+        if (leftModifiers.length !== rightModifiers.length) {
+            return leftModifiers.length - rightModifiers.length;
+        }
+
+        for (let index = 0; index < Math.min(leftModifiers.length, rightModifiers.length); index += 1) {
+            const leftLength = leftModifiers[index]?.suffix?.length || 0;
+            const rightLength = rightModifiers[index]?.suffix?.length || 0;
+            if (leftLength !== rightLength) {
+                return rightLength - leftLength;
+            }
+        }
+
+        const leftKey = leftModifiers.map((modifier) => modifier.suffix).join("|");
+        const rightKey = rightModifiers.map((modifier) => modifier.suffix).join("|");
+        return leftKey.localeCompare(rightKey);
+    }
+
+    function compareNaiveModifierResolutions(left, right) {
+        const leftBaseLength = String(left?.baseWord || "").length;
+        const rightBaseLength = String(right?.baseWord || "").length;
+        if (leftBaseLength !== rightBaseLength) {
+            return rightBaseLength - leftBaseLength;
+        }
+
+        return compareModifierChains(left?.modifiers, right?.modifiers);
+    }
+
+    function modifierLabelsFromChain(modifiers, startOffset, wordLength) {
+        return (Array.isArray(modifiers) ? modifiers : []).map((modifier) => ({
+            entries: [modifierPseudoEntry(modifier.key, modifier.matchedText || modifier.suffix)],
+            anchor: {
+                type: "substring",
+                start: startOffset + modifier.start,
+                end: startOffset + modifier.end,
+                wordLength
+            }
+        }));
+    }
+
+    function naiveModifierExactCandidates(baseCandidate) {
+        if (!STATE.settings.enableNaiveModifierHints) {
+            return [];
+        }
+
+        const lookupText = String(baseCandidate?.lookupKey || "");
+        const matchNormalized = String(baseCandidate?.matchNormalized || "");
+        if (!lookupText || !matchNormalized) {
+            return [];
+        }
+
+        const words = lookupText.split(/\s+/u).filter(Boolean);
+        if (!words.length) {
+            return [];
+        }
+
+        const lastWord = words[words.length - 1];
+        const prefixText = words.length > 1 ? `${words.slice(0, -1).join(" ")} ` : "";
+        const baseOffset = Math.max(0, matchNormalized.indexOf(lookupText));
+        const wordLength = matchNormalized.length;
+        const resolutions = [];
+
+        for (let splitIndex = 1; splitIndex < lastWord.length; splitIndex += 1) {
+            const baseWord = lastWord.slice(0, splitIndex);
+            const trailingText = lastWord.slice(splitIndex);
+            const modifierChains = collectModifierChainsFromTrailingText(
+                trailingText,
+                baseWord.endsWith("e")
+            ).filter((chain) => chain.length);
+
+            modifierChains.forEach((chain) => {
+                resolutions.push({
+                    lookupKey: `${prefixText}${baseWord}`,
+                    anchor: baseCandidate.anchor,
+                    baseWord,
+                    modifiers: chain,
+                    labels: modifierLabelsFromChain(
+                        chain,
+                        baseOffset + prefixText.length + baseWord.length,
+                        wordLength
+                    )
+                });
+            });
+        }
+
+        return resolutions
+            .filter((resolution) => resolution.lookupKey !== lookupText)
+            .sort(compareNaiveModifierResolutions);
+    }
+
+    function naiveModifierLabelsForSubstringMatch(normalizedWord, baseEnd) {
+        if (!STATE.settings.enableNaiveModifierHints) {
+            return { labels: [], coverageEnd: baseEnd };
+        }
+
+        const safeNormalizedWord = String(normalizedWord || "");
+        const safeBaseEnd = Math.max(0, Math.min(safeNormalizedWord.length, Number(baseEnd) || 0));
+        const trailingText = safeNormalizedWord.slice(safeBaseEnd);
+        if (!trailingText) {
+            return { labels: [], coverageEnd: safeBaseEnd };
+        }
+
+        const chains = collectModifierChainsFromTrailingText(
+            trailingText,
+            safeNormalizedWord.slice(0, safeBaseEnd).endsWith("e")
+        ).filter((chain) => chain.length);
+        if (!chains.length) {
+            return { labels: [], coverageEnd: safeBaseEnd };
+        }
+
+        const bestChain = chains.slice().sort(compareModifierChains)[0];
+        return {
+            labels: modifierLabelsFromChain(bestChain, safeBaseEnd, safeNormalizedWord.length),
+            coverageEnd: safeNormalizedWord.length
+        };
     }
 
     function exactLookupCandidatesForText(rawText, strictNormalized = null, allowAnchor = false) {
@@ -1457,7 +1675,8 @@
             normalized: String(normalized || ""),
             selectionMode: STATE.settings.selectionMode,
             includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
-            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle)
+            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle),
+            enableNaiveModifierHints: Boolean(STATE.settings.enableNaiveModifierHints)
         });
     }
 
@@ -1563,7 +1782,8 @@
             minimumWordLength: minimumWordLength(),
             selectionMode: STATE.settings.selectionMode,
             includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
-            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle)
+            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle),
+            enableNaiveModifierHints: Boolean(STATE.settings.enableNaiveModifierHints)
         });
     }
 
@@ -1725,12 +1945,16 @@
                 if (refs.length) {
                     const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
                     if (chosen.length) {
+                        const modifierSuffixResult = naiveModifierLabelsForSubstringMatch(normalizedWord, endIndex);
                         segments.push({
                             start: matchIndex,
-                            end: endIndex,
-                            length: candidate.normalized.length,
+                            end: modifierSuffixResult.coverageEnd,
+                            length: modifierSuffixResult.coverageEnd - matchIndex,
                             normalized: candidate.normalized,
-                            entries: chosen
+                            entries: chosen,
+                            baseStart: matchIndex,
+                            baseEnd: endIndex,
+                            modifierLabels: modifierSuffixResult.labels
                         });
                     }
                 }
@@ -1739,16 +1963,19 @@
             }
         }
 
-        const bestSegments = solveBestSubstringCoverage(segments).map((segment) => ({
-            entries: segment.entries,
-            normalized: segment.normalized,
-            anchor: {
-                type: "substring",
-                start: segment.start,
-                end: segment.end,
-                wordLength: normalizedWord.length
-            }
-        }));
+        const bestSegments = solveBestSubstringCoverage(segments).flatMap((segment) => ([
+            {
+                entries: segment.entries,
+                normalized: segment.normalized,
+                anchor: {
+                    type: "substring",
+                    start: segment.baseStart,
+                    end: segment.baseEnd,
+                    wordLength: normalizedWord.length
+                }
+            },
+            ...(Array.isArray(segment.modifierLabels) ? segment.modifierLabels : [])
+        ]));
 
         STATE.substringMatchCache.set(cacheKey, bestSegments.length ? bestSegments : null);
 
@@ -1826,6 +2053,34 @@
                     word: rawText,
                     normalized: candidate.matchNormalized,
                     labels: [{ entries: chosen, anchor: candidate.anchor }],
+                    wordCount,
+                    isSubstringMatch: false
+                };
+            }
+
+            for (const candidate of exactLookupCandidates.flatMap((item) => naiveModifierExactCandidates(item))) {
+                const chosen = chooseEntriesForNormalizedOutput(candidate.lookupKey);
+                if (!chosen) {
+                    continue;
+                }
+                if (!chosen.length) {
+                    return {
+                        matched: false,
+                        reason: "filtered-out",
+                        word: rawText,
+                        normalized: strictNormalized,
+                        wordCount
+                    };
+                }
+
+                return {
+                    matched: true,
+                    word: rawText,
+                    normalized: strictNormalized,
+                    labels: [
+                        { entries: chosen, anchor: candidate.anchor },
+                        ...(Array.isArray(candidate.labels) ? candidate.labels : [])
+                    ],
                     wordCount,
                     isSubstringMatch: false
                 };

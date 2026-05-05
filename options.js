@@ -54,6 +54,7 @@
         includeArpeggiates: document.getElementById("includeArpeggiates"),
         includeModifierStyle: document.getElementById("includeModifierStyle"),
         enableSubstringHints: document.getElementById("enableSubstringHints"),
+        enableNaiveModifierHints: document.getElementById("enableNaiveModifierHints"),
         suppressAffixMatchingInMiddleOfWords: document.getElementById("suppressAffixMatchingInMiddleOfWords"),
         showChordableWordOutlines: document.getElementById("showChordableWordOutlines"),
         minimumWordLength: document.getElementById("minimumWordLength"),
@@ -307,6 +308,7 @@
         };
 
         settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
+        settings.enableNaiveModifierHints = Boolean(settings.enableNaiveModifierHints);
         settings.suppressAffixMatchingInMiddleOfWords = Boolean(settings.suppressAffixMatchingInMiddleOfWords);
         settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
@@ -1106,6 +1108,7 @@
             includeArpeggiates: els.includeArpeggiates.checked,
             includeModifierStyle: els.includeModifierStyle.checked,
             enableSubstringHints: els.enableSubstringHints.checked,
+            enableNaiveModifierHints: els.enableNaiveModifierHints.checked,
             suppressAffixMatchingInMiddleOfWords: els.suppressAffixMatchingInMiddleOfWords.checked,
             showChordableWordOutlines: els.showChordableWordOutlines.checked,
             minimumWordLength: CCHShared.normalizeMinimumWordLength
@@ -1187,6 +1190,7 @@
         els.includeArpeggiates.checked = settings.includeArpeggiates;
         els.includeModifierStyle.checked = settings.includeModifierStyle;
         els.enableSubstringHints.checked = settings.enableSubstringHints;
+        els.enableNaiveModifierHints.checked = settings.enableNaiveModifierHints;
         els.suppressAffixMatchingInMiddleOfWords.checked = settings.suppressAffixMatchingInMiddleOfWords;
         els.showChordableWordOutlines.checked = settings.showChordableWordOutlines;
         els.minimumWordLength.value = settings.minimumWordLength;

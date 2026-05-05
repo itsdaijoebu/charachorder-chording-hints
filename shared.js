@@ -1265,6 +1265,7 @@
       includeArpeggiates: false,
       includeModifierStyle: false,
       enableSubstringHints: true,
+      enableNaiveModifierHints: false,
       suppressAffixMatchingInMiddleOfWords: false,
       minimumWordLength: normalizeMinimumWordLength(3),
       hintCharacterOrderMode: normalizeHintCharacterOrderMode("best-match"),
