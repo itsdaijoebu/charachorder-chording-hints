@@ -1667,6 +1667,9 @@
         );
         STATE.substringLookup = buildSubstringLookup();
         STATE.substringMatchCache = new Map();
+        if (typeof ChordingCoreAdapter !== "undefined") {
+            ChordingCoreAdapter.sync(STATE.dictionary);
+        }
         STATE.exactEntrySelectionCache = new Map();
     }
 
@@ -1894,6 +1897,17 @@
 
         if (STATE.substringLookup?.exactSingleWordMatches?.has(normalizedWord)) {
             return { matched: false, reason: "exact-word-exists", word: rawText, normalized: normalizedWord };
+        }
+
+        // chording-core integration: exhaustive Aho-Corasick matching +
+        // cost-model resolution replaces the coverage DP below.
+        if (typeof ChordingCoreAdapter !== "undefined") {
+            const adapterResult = ChordingCoreAdapter.matchWord(rawText, normalizedWord, {
+                minimumWordLength: requiredLength
+            });
+            if (adapterResult && adapterResult.matched) {
+                return adapterResult;
+            }
         }
 
         const cacheKey = substringCacheKey(normalizedWord);
