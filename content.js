@@ -2447,13 +2447,30 @@
         return rects[record.rectIndex ?? 0] || null;
     }
 
+    function textRangeRectForWord(word) {
+        // The text-range rect (trailing whitespace excluded) mirrors what
+        // single-chord outlines measure, so phrase boxes hug the text the
+        // chord produces instead of the word element's padded rect.
+        const normalized = String(wordRecordNormalizedText(word) || "");
+        const trimmedLength = Array.from(normalized.replace(/\s+$/u, "")).length;
+        if (!trimmedLength) {
+            return null;
+        }
+        const geometry = measuredSubstringGeometry(
+            word,
+            { normalized },
+            { anchor: { type: "substring", start: 0, end: trimmedLength } }
+        );
+        return geometry?.rect || null;
+    }
+
     function mergedMultiWordOutlineRects(words, startIndex, count) {
         // One rect per visual row for a multi-word span: adjacent word
         // rects on the same line merge into a single box so a phrase match
         // does not render as split segments with overlapping padding.
         const span = (Array.isArray(words) ? words : []).slice(startIndex, startIndex + Number(count || 0));
         const wordRects = span
-            .map((word) => wordRecordRect(word, hasActiveAnnotationMeasurementCache()))
+            .map((word) => textRangeRectForWord(word) || wordRecordRect(word, hasActiveAnnotationMeasurementCache()))
             .filter((rect) => rect && rect.width > 0 && rect.height > 0);
         if (!wordRects.length) {
             return [];
