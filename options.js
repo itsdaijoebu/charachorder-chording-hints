@@ -50,12 +50,8 @@
         clearButton: document.getElementById("clearButton"),
         importStatus: document.getElementById("importStatus"),
 
-        selectionMode: document.getElementById("selectionMode"),
         enabled: document.getElementById("enabled"),
-        includeArpeggiates: document.getElementById("includeArpeggiates"),
-        includeModifierStyle: document.getElementById("includeModifierStyle"),
         enableSubstringHints: document.getElementById("enableSubstringHints"),
-        enableNaiveModifierHints: document.getElementById("enableNaiveModifierHints"),
         showChordableWordOutlines: document.getElementById("showChordableWordOutlines"),
         minimumWordLength: document.getElementById("minimumWordLength"),
         hintCharacterOrderMode: document.getElementById("hintCharacterOrderMode"),
@@ -308,7 +304,6 @@
         };
 
         settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
-        settings.enableNaiveModifierHints = Boolean(settings.enableNaiveModifierHints);
         settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
             : Math.max(1, Math.floor(Number(settings.minimumWordLength)) || 3);
@@ -1102,12 +1097,8 @@
         return hydrateSettings({
             ...draftSettings,
             themeMode: themeModeFromControls(),
-            selectionMode: els.selectionMode.value,
             enabled: els.enabled.checked,
-            includeArpeggiates: els.includeArpeggiates.checked,
-            includeModifierStyle: els.includeModifierStyle.checked,
             enableSubstringHints: els.enableSubstringHints.checked,
-            enableNaiveModifierHints: els.enableNaiveModifierHints.checked,
             showChordableWordOutlines: els.showChordableWordOutlines.checked,
             minimumWordLength: CCHShared.normalizeMinimumWordLength
                 ? CCHShared.normalizeMinimumWordLength(els.minimumWordLength.value)
@@ -1183,12 +1174,8 @@
         draftSettings = hydrateSettings(settings);
         syncThemeControls(settings.themeMode || "system");
         applyOptionsTheme(settings.themeMode || "system");
-        els.selectionMode.value = settings.selectionMode;
         els.enabled.checked = settings.enabled;
-        els.includeArpeggiates.checked = settings.includeArpeggiates;
-        els.includeModifierStyle.checked = settings.includeModifierStyle;
         els.enableSubstringHints.checked = settings.enableSubstringHints;
-        els.enableNaiveModifierHints.checked = settings.enableNaiveModifierHints;
         els.showChordableWordOutlines.checked = settings.showChordableWordOutlines;
         els.minimumWordLength.value = settings.minimumWordLength;
         els.hintCharacterOrderMode.value = settings.hintCharacterOrderMode;

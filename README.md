@@ -33,9 +33,15 @@ Gated mode only, no fallback:
   layout or reachable via a bound chord output; chord inputs must be
   physically feasible (layer-dynamics F-gate). Settings modulate matching
   (concatenation style, arpeggiate/modifier compounding, warp).
-- Without a device state nothing matches (fail closed). JSON import loads
-  chords for the exact-word path and the editor, but substring hints stay
-  disabled until a full sync.
+- Without a device state nothing matches (fail closed). JSON import feeds
+  only the options-page editor and export features — it produces no hints.
+
+The preexisting exact-word path (dictionary lookup + naive modifier
+suggestions) is removed entirely: every word goes through chording-core,
+so exact words are matched by the same matcher/resolver as substrings.
+Settings that only the exact path consumed (`selectionMode`,
+`includeArpeggiates`, `includeModifierStyle`, `enableNaiveModifierHints`)
+are gone from the options page.
 
 ### Data-gated heuristics
 Anything that should be heuristically guided is data gated for

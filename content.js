@@ -7,14 +7,6 @@
     const ANNOTATION_CHUNK_DEFERRED_MAX_STARTS = 120;
     const ANNOTATION_CHUNK_DEFERRED_BUDGET_MS = 14;
     const HINT_LABEL_TEMPLATE_CACHE_LIMIT = 512;
-    const NAIVE_MODIFIER_DEFINITIONS = [
-        { suffix: "ing", key: "ambileft_left" },
-        { suffix: "es", key: "ambiright_right" },
-        { suffix: "ed", key: "layer2_left", eEndingCompactSuffix: "d" },
-        { suffix: "er", key: "layer2_right", eEndingCompactSuffix: "r" },
-        { suffix: "s", key: "ambiright_right" }
-    ];
-    const MODIFIER_PSEUDO_ENTRY_CACHE = new Map();
 
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
@@ -36,14 +28,11 @@
         promptRefreshTimer: null,
         lastPromptSignature: "",
         containerRebindTimer: null,
-        maxLookupWordCount: 1,
         overlayRoot: null,
         overlayLabels: [],
         overlayOutlines: [],
         overlayRepositionFrame: null,
         overlayResizeObserver: null,
-        exactWordLookup: null,
-        exactEntrySelectionCache: new Map(),
         hintLabelTemplateCache: new Map(),
         hintLabelClickDelegationInstalled: false,
         annotationMeasurementCache: null,
@@ -541,7 +530,6 @@
         };
 
         merged.enableSubstringHints = Boolean(merged.enableSubstringHints);
-        merged.enableNaiveModifierHints = Boolean(merged.enableNaiveModifierHints);
         merged.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(merged.minimumWordLength)
             : Math.max(1, Math.floor(Number(merged.minimumWordLength)) || 3);
@@ -932,101 +920,6 @@
         return CCHShared.normalizeTokenForLookup(wordRecordText(word));
     }
 
-    function stripPromptEdgeSpecialCharacters(text) {
-        return String(text || "")
-            .replace(/^[^\p{L}\p{N}\s]+/gu, "")
-            .replace(/[^\p{L}\p{N}\s]+$/gu, "");
-    }
-
-    function codePointsForText(text) {
-        return Array.from(String(text || ""))
-            .map((char) => char.codePointAt(0))
-            .filter((code) => Number.isFinite(code));
-    }
-
-    function modifierPseudoEntry(modifierKey, suffixText) {
-        const cacheKey = `${modifierKey}:${suffixText}`;
-        const cached = MODIFIER_PSEUDO_ENTRY_CACHE.get(cacheKey);
-        if (cached) {
-            return cached;
-        }
-
-        const token = CCHShared.makePseudoSpecialToken(modifierKey, modifierKey);
-        const entry = CCHShared.buildEntry({
-            index: -1,
-            inputSegments: [{
-                index: 0,
-                kind: "decoded",
-                inputCodes: [],
-                inputTokens: [token],
-                rawInput: `(${modifierKey})`,
-                editableText: "",
-                sortText: `(${modifierKey})`
-            }],
-            outputCodes: codePointsForText(suffixText),
-            status: 0,
-            userFlags: { displayEnabled: true }
-        });
-
-        MODIFIER_PSEUDO_ENTRY_CACHE.set(cacheKey, entry);
-        return entry;
-    }
-
-    function allowedModifierTexts(definition, baseEndsWithE) {
-        const variants = [definition.suffix];
-        if (baseEndsWithE && definition.eEndingCompactSuffix) {
-            variants.push(definition.eEndingCompactSuffix);
-        }
-        return variants;
-    }
-
-    function shiftModifierChain(chain, offset) {
-        return (Array.isArray(chain) ? chain : []).map((modifier) => ({
-            ...modifier,
-            start: modifier.start + offset,
-            end: modifier.end + offset
-        }));
-    }
-
-    function collectModifierChainsFromTrailingText(text, baseEndsWithE, memo = new Map()) {
-        const safeText = String(text || "");
-        const memoKey = `${baseEndsWithE ? "1" : "0"}:${safeText}`;
-        if (memo.has(memoKey)) {
-            return memo.get(memoKey);
-        }
-
-        if (!safeText) {
-            const baseChains = [[]];
-            memo.set(memoKey, baseChains);
-            return baseChains;
-        }
-
-        const chains = [];
-        NAIVE_MODIFIER_DEFINITIONS.forEach((definition) => {
-            allowedModifierTexts(definition, baseEndsWithE).forEach((matchedText) => {
-                if (!safeText.startsWith(matchedText)) {
-                    return;
-                }
-
-                const remainder = safeText.slice(matchedText.length);
-                collectModifierChainsFromTrailingText(remainder, baseEndsWithE, memo).forEach((remainderChain) => {
-                    chains.push([
-                        {
-                            ...definition,
-                            matchedText,
-                            start: 0,
-                            end: matchedText.length
-                        },
-                        ...shiftModifierChain(remainderChain, matchedText.length)
-                    ]);
-                });
-            });
-        });
-
-        memo.set(memoKey, chains);
-        return chains;
-    }
-
     function compareModifierChains(left, right) {
         const leftModifiers = Array.isArray(left) ? left : [];
         const rightModifiers = Array.isArray(right) ? right : [];
@@ -1056,113 +949,6 @@
         }
 
         return compareModifierChains(left?.modifiers, right?.modifiers);
-    }
-
-    function modifierLabelsFromChain(modifiers, startOffset, wordLength) {
-        return (Array.isArray(modifiers) ? modifiers : []).map((modifier) => ({
-            entries: [modifierPseudoEntry(modifier.key, modifier.matchedText || modifier.suffix)],
-            anchor: {
-                type: "substring",
-                start: startOffset + modifier.start,
-                end: startOffset + modifier.end,
-                wordLength
-            }
-        }));
-    }
-
-    function naiveModifierExactCandidates(baseCandidate) {
-        if (!STATE.settings.enableNaiveModifierHints) {
-            return [];
-        }
-
-        const lookupText = String(baseCandidate?.lookupKey || "");
-        const matchNormalized = String(baseCandidate?.matchNormalized || "");
-        if (!lookupText || !matchNormalized) {
-            return [];
-        }
-
-        const words = lookupText.split(/\s+/u).filter(Boolean);
-        if (!words.length) {
-            return [];
-        }
-
-        const lastWord = words[words.length - 1];
-        const prefixText = words.length > 1 ? `${words.slice(0, -1).join(" ")} ` : "";
-        const baseOffset = Math.max(0, matchNormalized.indexOf(lookupText));
-        const wordLength = matchNormalized.length;
-        const resolutions = [];
-
-        for (let splitIndex = 1; splitIndex < lastWord.length; splitIndex += 1) {
-            const baseWord = lastWord.slice(0, splitIndex);
-            const trailingText = lastWord.slice(splitIndex);
-            const modifierChains = collectModifierChainsFromTrailingText(
-                trailingText,
-                baseWord.endsWith("e")
-            ).filter((chain) => chain.length);
-
-            modifierChains.forEach((chain) => {
-                resolutions.push({
-                    lookupKey: `${prefixText}${baseWord}`,
-                    anchor: baseCandidate.anchor,
-                    baseWord,
-                    modifiers: chain,
-                    labels: modifierLabelsFromChain(
-                        chain,
-                        baseOffset + prefixText.length + baseWord.length,
-                        wordLength
-                    )
-                });
-            });
-        }
-
-        return resolutions
-            .filter((resolution) => resolution.lookupKey !== lookupText)
-            .sort(compareNaiveModifierResolutions);
-    }
-
-    function exactLookupCandidatesForText(rawText, strictNormalized = null, allowAnchor = false) {
-        const candidates = [];
-        const safeStrictNormalized = typeof strictNormalized === "string"
-            ? strictNormalized
-            : CCHShared.normalizeTokenForLookup(rawText);
-
-        if (safeStrictNormalized) {
-            candidates.push({
-                lookupKey: safeStrictNormalized,
-                matchNormalized: safeStrictNormalized,
-                anchor: null
-            });
-        }
-
-        const edgeStrippedText = stripPromptEdgeSpecialCharacters(rawText);
-        const edgeStrippedNormalized = CCHShared.normalizeTokenForLookup(edgeStrippedText);
-        const strictWordCount = safeStrictNormalized
-            ? safeStrictNormalized.split(/\s+/u).filter(Boolean).length
-            : 0;
-        const edgeStrippedWordCount = edgeStrippedNormalized
-            ? edgeStrippedNormalized.split(/\s+/u).filter(Boolean).length
-            : 0;
-        if (
-            edgeStrippedNormalized &&
-            edgeStrippedWordCount === strictWordCount &&
-            !candidates.some((candidate) => candidate.lookupKey === edgeStrippedNormalized)
-        ) {
-            const start = allowAnchor ? safeStrictNormalized.indexOf(edgeStrippedNormalized) : -1;
-            candidates.push({
-                lookupKey: edgeStrippedNormalized,
-                matchNormalized: safeStrictNormalized,
-                anchor: start >= 0
-                    ? {
-                        type: "substring",
-                        start,
-                        end: start + edgeStrippedNormalized.length,
-                        wordLength: safeStrictNormalized.length
-                    }
-                    : null
-            });
-        }
-
-        return candidates;
     }
 
     function wordRecordHasLookupText(word) {
@@ -1633,40 +1419,9 @@
     }
 
     function refreshLookupMetadata() {
-        const normalizedOutputs = Object.keys(STATE.dictionary?.byNormalizedOutput || {});
-        STATE.maxLookupWordCount = Math.max(
-            1,
-            ...normalizedOutputs.map((key) => String(key).split(/\s+/u).filter(Boolean).length)
-        );
-        STATE.exactWordLookup = buildExactWordLookup();
         if (typeof ChordingCoreAdapter !== "undefined") {
             ChordingCoreAdapter.sync(STATE.dictionary, STATE.deviceState);
         }
-        STATE.exactEntrySelectionCache = new Map();
-    }
-
-    function exactEntrySelectionCacheKey(normalized) {
-        return JSON.stringify({
-            normalized: String(normalized || ""),
-            selectionMode: STATE.settings.selectionMode,
-            includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
-            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle),
-            enableNaiveModifierHints: Boolean(STATE.settings.enableNaiveModifierHints)
-        });
-    }
-
-    function chooseEntriesForNormalizedOutput(normalized) {
-        const key = exactEntrySelectionCacheKey(normalized);
-        if (STATE.exactEntrySelectionCache.has(key)) {
-            return STATE.exactEntrySelectionCache.get(key);
-        }
-
-        const refs = STATE.dictionary?.byNormalizedOutput?.[normalized];
-        const chosen = refs?.length
-            ? CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings)
-            : null;
-        STATE.exactEntrySelectionCache.set(key, chosen);
-        return chosen;
     }
 
     function minimumWordLength() {
@@ -1689,27 +1444,6 @@
         return parts.every((part) => Array.from(part).length >= requiredLength);
     }
 
-    function buildExactWordLookup() {
-        // chording-core cleanup: substring matching lives entirely in
-        // ChordingCoreAdapter; only the exact-word set remains (used by the
-        // exact-word-exists guard in findSubstringMatchForWord).
-        const dictionary = STATE.dictionary;
-        if (!dictionary?.byNormalizedOutput) {
-            return { exactSingleWordMatches: new Set() };
-        }
-
-        const exactSingleWordMatches = new Set();
-        Object.entries(dictionary.byNormalizedOutput).forEach(([normalized]) => {
-            const safeNormalized = String(normalized || "");
-            if (!safeNormalized || /\s/u.test(safeNormalized)) {
-                return;
-            }
-            exactSingleWordMatches.add(safeNormalized);
-        });
-
-        return { exactSingleWordMatches };
-    }
-
     function findSubstringMatchForWord(rawText, normalizedWord) {
         if (!STATE.settings.enableSubstringHints) {
             return { matched: false, reason: "substring-disabled", word: rawText, normalized: normalizedWord };
@@ -1720,10 +1454,6 @@
         }
 
         const requiredLength = minimumWordLength();
-
-        if (STATE.exactWordLookup?.exactSingleWordMatches?.has(normalizedWord)) {
-            return { matched: false, reason: "exact-word-exists", word: rawText, normalized: normalizedWord };
-        }
 
         // chording-core: substring matching is entirely delegated to the
         // adapter (exhaustive Aho-Corasick + cost-model resolution).
@@ -1747,101 +1477,16 @@
             return { matched: false, reason: "empty-normalized", word: rawText };
         }
 
-        const maxWordCount = Math.min(
-            STATE.maxLookupWordCount || 1,
-            words.length - startIndex
-        );
-        const phraseTexts = [];
-        const strictNormalizedTexts = [];
-        let phrase = "";
-
-        for (let wordCount = 1; wordCount <= maxWordCount; wordCount += 1) {
-            const text = wordRecordText(words[startIndex + wordCount - 1]);
-            phrase = phrase ? `${phrase} ${text}` : text;
-            phraseTexts[wordCount] = phrase;
-            strictNormalizedTexts[wordCount] = wordCount === 1
-                ? wordRecordNormalizedText(words[startIndex])
-                : CCHShared.normalizeTokenForLookup(phrase);
-        }
-
-        for (let wordCount = maxWordCount; wordCount >= 1; wordCount -= 1) {
-            if (!wordRecordHasLookupText(words[startIndex + wordCount - 1])) {
-                continue;
-            }
-
-            const rawText = phraseTexts[wordCount];
-            const strictNormalized = strictNormalizedTexts[wordCount];
-
-            if (!strictNormalized) {
-                continue;
-            }
-
-            if (wordCount === 1 && !phraseMeetsMinimumLength(rawText)) {
-                continue;
-            }
-
-            const exactLookupCandidates = exactLookupCandidatesForText(rawText, strictNormalized, wordCount === 1);
-            for (const candidate of exactLookupCandidates) {
-                const chosen = chooseEntriesForNormalizedOutput(candidate.lookupKey);
-                if (!chosen) {
-                    continue;
-                }
-                if (!chosen.length) {
-                    return {
-                        matched: false,
-                        reason: "filtered-out",
-                        word: rawText,
-                        normalized: candidate.matchNormalized,
-                        wordCount
-                    };
-                }
-
-                return {
-                    matched: true,
-                    word: rawText,
-                    normalized: candidate.matchNormalized,
-                    labels: [{ entries: chosen, anchor: candidate.anchor }],
-                    wordCount,
-                    isSubstringMatch: false
-                };
-            }
-
-            for (const candidate of exactLookupCandidates.flatMap((item) => naiveModifierExactCandidates(item))) {
-                const chosen = chooseEntriesForNormalizedOutput(candidate.lookupKey);
-                if (!chosen) {
-                    continue;
-                }
-                if (!chosen.length) {
-                    return {
-                        matched: false,
-                        reason: "filtered-out",
-                        word: rawText,
-                        normalized: strictNormalized,
-                        wordCount
-                    };
-                }
-
-                return {
-                    matched: true,
-                    word: rawText,
-                    normalized: strictNormalized,
-                    labels: [
-                        { entries: chosen, anchor: candidate.anchor },
-                        ...(Array.isArray(candidate.labels) ? candidate.labels : [])
-                    ],
-                    wordCount,
-                    isSubstringMatch: false
-                };
-            }
-        }
-
-        const rawText = phraseTexts[1] || "";
+        const rawText = wordRecordText(words[startIndex]);
         const normalized = wordRecordNormalizedText(words[startIndex]);
 
         if (!normalized) {
             return { matched: false, reason: "empty-normalized", word: rawText };
         }
 
+        // chording-core: the exact-word path is removed. Every word goes
+        // through the chording-core matcher (exhaustive substring matching
+        // with cost-model resolution covers exact words too).
         const substringResult = findSubstringMatchForWord(rawText, normalized);
         if (substringResult.matched) {
             return substringResult;
