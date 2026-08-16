@@ -2919,6 +2919,13 @@
         }
 
         if (labelMatch?.anchor?.type === "substring" || Number(match?.wordCount) === 1) {
+            // chording-core fix: outline the anchor as ONE bounding rect.
+            // getClientRects() splits on style runs (untyped/typed chars),
+            // which made the dashed box split into segments.
+            const geometry = measuredSubstringGeometry(word, match, labelMatch);
+            if (geometry?.rect) {
+                return [geometry.rect];
+            }
             const measuredRects = measuredSubstringViewportRects(word, match, labelMatch);
             if (measuredRects.length) {
                 return measuredRects;

@@ -82,6 +82,18 @@
 
     adapter.compiled = C.compileChordDictionary(formEntries);
     adapter.formSource = formSource;
+    adapter.suffixModifiers = [];
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      const out = Array.isArray(e?.outputCodes) ? e.outputCodes : [];
+      const text = typeof e?.normalizedOutput === "string" ? e.normalizedOutput : "";
+      // affix classification matches the extension's deriveAffixType:
+      // output starting with JOIN (574) and not ending with KSC_00 (256)
+      // is a suffix modifier.
+      if (out[0] === 574 && out[out.length - 1] !== 256 && text) {
+        adapter.suffixModifiers.push({ sourceIndex: i, text });
+      }
+    }
     adapter.dictionaryVersion += 1;
   };
 
@@ -108,18 +120,59 @@
       variantHyperspaceCost: 0.1,
     });
 
-    const labels = plan.choices.map((choice) => {
-      const src = adapter.formSource[choice.entryIndex] ?? choice.entryIndex;
-      return {
-        entries: [src],
-        anchor: {
-          type: "substring",
-          start: choice.start,
-          end: choice.end,
-          wordLength: normalizedWord.length,
-        },
-      };
-    });
+    // Modifier spans already claimed by a suffix-modifier label suppress the
+    // plain chord choice at the same span (no duplicate hints).
+    const modifierSpans = [];
+    for (const choice of plan.choices) {
+      for (const mod of adapter.suffixModifiers) {
+        const modText = String(mod.text || "");
+        if (!modText) continue;
+        if (normalizedWord.startsWith(modText, choice.end)) {
+          modifierSpans.push([choice.end, Math.min(choice.end + modText.length, normalizedWord.length)]);
+          break;
+        }
+      }
+    }
+
+    const labels = [];
+    for (const choice of plan.choices) {
+      const coveredByModifier = modifierSpans.some(
+        ([ms, me]) => choice.start === ms && choice.end === me
+      );
+      if (!coveredByModifier) {
+        const src = adapter.formSource[choice.entryIndex] ?? choice.entryIndex;
+        labels.push({
+          entries: [src],
+          anchor: {
+            type: "substring",
+            start: choice.start,
+            end: choice.end,
+            wordLength: normalizedWord.length,
+          },
+        });
+      }
+
+      // Suffix modifier chords (outputs starting with JOIN 574) shown with
+      // the hint: if the text right after the matched chord starts with a
+      // modifier's output, append a modifier label for it.
+      for (const mod of adapter.suffixModifiers) {
+        const modText = String(mod.text || "");
+        if (!modText) continue;
+        const at = choice.end;
+        if (normalizedWord.startsWith(modText, at)) {
+          labels.push({
+            entries: [mod.sourceIndex],
+            anchor: {
+              type: "substring",
+              start: at,
+              end: Math.min(at + modText.length, normalizedWord.length),
+              wordLength: normalizedWord.length,
+            },
+          });
+          break; // one modifier per matched chord
+        }
+      }
+    }
 
     return {
       matched: labels.length > 0,
