@@ -235,6 +235,7 @@
     variantPenalty: () => variantPenalty,
     spaceModeGated: () => spaceModeGated,
     spaceMode: () => spaceMode,
+    singleLayerExists: () => singleLayerExists,
     settingEffect: () => settingEffect,
     reachable: () => reachable,
     modeEffect: () => modeEffect,
@@ -246,9 +247,11 @@
     keyInInput: () => keyInInput,
     isModifierStyleOutput: () => isModifierStyleOutput,
     isArpeggiateChordInput: () => isArpeggiateChordInput,
+    inputOkInLayer: () => inputOkInLayer,
     inputCodesBound: () => inputCodesBound,
     hasLayerKeyInput: () => hasLayerKeyInput,
     feasibilityClass: () => feasibilityClass,
+    codeOkInLayer: () => codeOkInLayer,
     codeInLayer: () => codeInLayer,
     codeInArray: () => codeInArray,
     codeInAnyLayer: () => codeInAnyLayer,
@@ -508,6 +511,35 @@
       i = i + 1;
     }
     return bound;
+  }
+  function codeOkInLayer(code, layout, slotsPerLayer, layerIdx) {
+    if (code === 0)
+      return 1;
+    if (code >= 600 && code <= 617)
+      return 1;
+    return codeInLayer(code, layout, slotsPerLayer, layerIdx);
+  }
+  function inputOkInLayer(layerIdx, input, layout, slotsPerLayer) {
+    let allOk = 1;
+    let i = 0;
+    while (i < input.length) {
+      if (codeOkInLayer(input[i], layout, slotsPerLayer, layerIdx) === 0 && allOk === 1) {
+        allOk = 0;
+      }
+      i = i + 1;
+    }
+    return allOk;
+  }
+  function singleLayerExists(input, layout, slotsPerLayer) {
+    let found = 0;
+    let l = 0;
+    while (l < 4) {
+      if (inputOkInLayer(l, input, layout, slotsPerLayer) === 1 && found === 0) {
+        found = 1;
+      }
+      l = l + 1;
+    }
+    return found;
   }
   function arpeggiateActive(enable, mode85, wantClass) {
     if (enable === 0)
@@ -771,7 +803,8 @@
     const r = layersReferenced(inCodes, ctx.layoutCodes, ctx.slotsPerLayer);
     const K = hasLayerKeyInput(inCodes);
     const warpOn = ctx.settings[112] ?? 0;
-    const fclass = feasibilityClass(r, K, warpOn);
+    const rEff = K === 0 && singleLayerExists(inCodes, ctx.layoutCodes, ctx.slotsPerLayer) === 1 ? 1 : r;
+    const fclass = feasibilityClass(rEff, K, warpOn);
     if (inputCodesBound(inCodes, ctx.layoutCodes, ctx.slotsPerLayer) === 0) {
       return { forms: [], reBind: false };
     }
