@@ -27,17 +27,17 @@
             </div>
         </div>
 
-        <p class="muted">Sync from a connected CharaChorder. JSON import is provided as a fallback in case your version of Chromium doesn't support this for some reason.</p>
+        <p class="muted">Full sync reads the chord library, device settings, and layout over the Serial API. Everything the matching system needs: without a device state, substring hints stay disabled (no permissive fallback).</p>
 
         <div class="importControlStack">
             <div class="syncOptionGrid">
                 <div class="syncOptionPanel">
-                    <h3>Sync from device</h3>
-                    <button id="syncDeviceButton" type="button" class="tallButton">Sync chords directly from device</button>
+                    <h3>Full sync from device</h3>
+                    <button id="syncDeviceButton" type="button" class="tallButton">Full sync: chords, settings, layout</button>
                 </div>
 
                 <div class="syncOptionPanel syncOptionPanelSeparated">
-                    <h3>If Syncing Directly Doesn't Work</h3>
+                    <h3>JSON import (no device gates)</h3>
                     <div class="fileImportRow">
                         <button id="importButton" type="button">Import JSON</button>
                         <input id="jsonFile" type="file" accept="application/json,.json">
@@ -310,18 +310,6 @@
     <section class="card">
         <h2>Behavior</h2>
         <div class="field_grid compactFields">
-            <label class="fieldLabel" for="selectionMode">
-          <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
-                data-tooltip="Shortest:&#10;Shows the shortest input chord available&#10;&#10;First:&#10;Shows the first valid chord in the dictionary.&#10;&#10;All:&#10;Shows all valid chords.">
-              <span>Which matching chord to show</span>
-              <span class="tooltipIcon" aria-hidden="true"></span>
-            </span>
-                <select id="selectionMode">
-                    <option value="shortest">Shortest</option>
-                    <option value="first">First</option>
-                    <option value="all">All</option>
-                </select>
-            </label>
             <label class="fieldLabel" for="hintCharacterOrderMode">
           <span class="labelWithTooltip tooltipable tooltipOpenUpwards"
                 data-tooltip="CharaChorder default:&#10;Orders letters alphabetically.&#10;&#10;Best match:&#10;Reorders letters to follow the output word as closely as possible.">
@@ -347,20 +335,10 @@
                    data-tooltip="When a full word isn't in your dictionary (ex. neither, greater), but a part of the word is (ex. either, great), then you'll see a chord hint for that part of the word.&#10;&#10;This also helps with punctuation-attached outputs, ex. '.com' in 'example.com'.&#10;&#10;May affect performance, so disable if causing slowdowns."><input
                     id="enableSubstringHints" type="checkbox"><span>Enable Substring / Edge-char Hints</span><span
                     class="tooltipIcon" aria-hidden="true"></span></label>
-            <label class="check tooltipable" for="enableNaiveModifierHints"
-                   data-tooltip="WARNING:&#10;VERY basic and VERY imperfect. Due to how basic the implementation of this feature is, it misses a lot of rules and won't pick up on things like 'saving'.&#10;&#10;Turn this off once modifiers feel natural. Otherwise this option might just cause confusion.&#10;&#10;Provides hints for chord modifiers (-ing, -ed, -er, -s, -es) after chords.">
-                <input id="enableNaiveModifierHints" type="checkbox"><span>Enable chord modifier hints</span><span
-                    class="tooltipIcon" aria-hidden="true"></span></label>
-            <label class="check tooltipable" for="suppressAffixMatchingInMiddleOfWords"
-                   data-tooltip="When enabled, affix-only chords match only at the beginning/end of words.&#10;&#10;Prefixes are signalled by having their output remove the trailing space.&#10;&#10;Suffixes are signalled by having their output remove the preceding space.&#10;&#10;Chords that remove both spaces don't matter for this option.">
-                <input id="suppressAffixMatchingInMiddleOfWords" type="checkbox"><span>Restrict affix matching to word start/end</span><span
-                    class="tooltipIcon" aria-hidden="true"></span></label>
             <label class="check tooltipable" for="showChordableWordOutlines"
                    data-tooltip="Shows outlines around chordable output.&#10;&#10;May impact performance, so disable if causing slowdowns"><input
                     id="showChordableWordOutlines" type="checkbox"><span>Show outlines on chordable text</span><span
                     class="tooltipIcon" aria-hidden="true"></span></label>
-            <label class="check" for="includeArpeggiates"><input id="includeArpeggiates" type="checkbox"><span>Include arpeggiates</span></label>
-            <label class="check" for="includeModifierStyle"><input id="includeModifierStyle" type="checkbox"><span>Include modifier-style outputs</span></label>
             <label class="check" for="debugLogging"><input id="debugLogging"
                                                            type="checkbox"><span>Enable debug logging</span></label>
             <label class="check" for="showExtendedSpecialDescriptions"><input id="showExtendedSpecialDescriptions"

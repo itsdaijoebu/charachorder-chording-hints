@@ -19,6 +19,54 @@ Note that using this extension with Keybr places the cursor in a weird place at 
   - Also useful for seeing that you can chord "great", then hit the "er" modifier to turn it into "greater". 
   - Outlines and non-whole word hints can be turned off if you find them distracting.
 
+## Matching model (this fork)
+All matching is delegated to
+[`Tactile-Taco/chording-core`](https://github.com/Tactile-Taco/chording-core)
+(Aho-Corasick matcher + cost-model resolver + Lean-verified decision core).
+Gated mode only, no fallback:
+
+- The options page **Full sync** reads the chord library (`CML`), the device
+  settings consumed by the decision gates (`VAR B1`: 49 chording enable,
+  62 concatenation style, 81 arpeggiates enable, 85 arpeggiates mode,
+  112 layer warp), and the bound layout (`VAR B3`, profile A layers).
+- The whole paragraph text is matched as one stream per annotation pass:
+  single words, substrings, and multi-word phrases are all found by the
+  same matcher, and the resolver picks one cost-minimal non-overlapping
+  plan (e.g. a phrase chord wins over two separate word chords).
+- An action expands the output space only if it is bound in the live
+  layout or reachable via a bound chord output; chord inputs must be
+  physically feasible (layer-dynamics F-gate). Settings modulate matching
+  (concatenation style, arpeggiate/modifier compounding, warp).
+- Without a device state nothing matches (fail closed). JSON import feeds
+  only the options-page editor and export features — it produces no hints.
+
+The preexisting matching (exact dictionary lookup, naive modifier
+suggestions, coverage DP substring scanning) is removed entirely: every
+word and phrase goes through chording-core, so exact words are matched by
+the same matcher/resolver as substrings. Settings that only the removed
+paths consumed (`selectionMode`, `includeArpeggiates`,
+`includeModifierStyle`, `enableNaiveModifierHints`) are gone from the
+options page.
+
+### Hyperspace-boundary gate (σ(54)-aware)
+Chording revises text since the last hyperspace (concatenator; space by
+default) before the chord output — documented by the official firmware
+e2e corpus (`autocorrect/dup_chord.yml` deletes, `smart_detection/
+prepended/dup_chord.yml` with σ(54)=0 does not). With autocorrect on
+(σ(54) > 0, the default) a candidate is admissible only when its start
+sits directly after a hyperspace or at stream start; mid-word starts
+(e.g. a chord beginning after an opening paren) are dropped before
+resolution. With autocorrect off (σ(54) = 0) the output appends, so
+mid-word candidates are admitted — setting σ(54) to 0 is the device-side
+change that makes chords after punctuation typeable.
+
+### Data-gated heuristics
+Anything that should be heuristically guided is data gated for
+implementation: heuristics that price how chords are *actually* typed
+(e.g. symbolic `+`/`->` hint annotations for modifiers and pre/post
+actions) need real typing-speed data before they can be implemented
+accurately. No such data is collected today, so no such heuristics ship.
+
 
 ## Installation
 Getting it from the [Chrome Web Store](https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn) would be the easiest method for installation and ensuring the extension stays up-to-date.

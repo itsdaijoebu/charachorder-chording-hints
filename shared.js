@@ -467,15 +467,6 @@
       .toLowerCase();
   }
 
-  function compareEntriesByShortest(a, b) {
-    const aLen = meaningfulInputCodes(a.inputCodes).length;
-    const bLen = meaningfulInputCodes(b.inputCodes).length;
-    if (aLen !== bLen) return aLen - bLen;
-    if ((a.rawInput || "").length !== (b.rawInput || "").length) {
-      return (a.rawInput || "").length - (b.rawInput || "").length;
-    }
-    return (a.index ?? 0) - (b.index ?? 0);
-  }
 
   function deriveAffixType(outputCodes) {
     const safeOutputCodes = Array.isArray(outputCodes) ? outputCodes : [];
@@ -728,33 +719,7 @@
     });
   }
 
-  function dereferenceEntries(dictionary, refs) {
-    if (!Array.isArray(refs) || !dictionary?.entries) return [];
-    return refs.map((index) => dictionary.entries[index]).filter(Boolean);
-  }
 
-  function chooseEntries(dictionary, refs, settings) {
-    const entries = dereferenceEntries(dictionary, refs);
-    if (!entries.length) return [];
-
-    const filtered = entries.filter((entry) => {
-      if (!settings.includeArpeggiates && entry.flags.hasArpeggiate) return false;
-      if (!settings.includeModifierStyle && entry.flags.hasModifierLikeOutput) return false;
-      return true;
-    });
-
-    const usable = filtered.length ? filtered : entries;
-
-    switch (settings.selectionMode) {
-      case "all":
-        return usable.slice().sort(compareEntriesByShortest);
-      case "first":
-        return usable.slice(0, 1);
-      case "shortest":
-      default:
-        return usable.slice().sort(compareEntriesByShortest).slice(0, 1);
-    }
-  }
 
   function buildOverrideSegments(baseEntry, segmentTexts) {
     const baseSegments = entryInputSegments(baseEntry);
@@ -1261,12 +1226,7 @@
   function defaultSettings() {
     return {
       enabled: true,
-      selectionMode: "shortest",
-      includeArpeggiates: false,
-      includeModifierStyle: false,
       enableSubstringHints: true,
-      enableNaiveModifierHints: false,
-      suppressAffixMatchingInMiddleOfWords: false,
       minimumWordLength: normalizeMinimumWordLength(3),
       hintCharacterOrderMode: normalizeHintCharacterOrderMode("best-match"),
       showChordableWordOutlines: true,
@@ -1282,9 +1242,9 @@
       hint_box_light_mode_opacity: 0.96,
       hint_text_light_mode_color: "#d0d1d7",
 
-      hint_text_font_size_value: 0.5,
+      hint_text_font_size_value: 0.9,
       hint_text_font_size_unit: "em",
-      hint_text_font_size_em: 0.5,
+      hint_text_font_size_em: 0.9,
       hint_position: "left",
       hint_display: "always",
       keybr_hint_layout: "extra-spacing",
@@ -1333,7 +1293,6 @@
     formatHotkey,
     hotkeyMatchesEvent,
     reorderSegmentTokensForBestMatch,
-    chooseEntries,
     normalizeTokenForLookup,
     meaningfulInputCodes,
     inputCodesToRawDisplay,

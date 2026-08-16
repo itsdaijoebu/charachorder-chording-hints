@@ -7,24 +7,18 @@
     const ANNOTATION_CHUNK_DEFERRED_MAX_STARTS = 120;
     const ANNOTATION_CHUNK_DEFERRED_BUDGET_MS = 14;
     const HINT_LABEL_TEMPLATE_CACHE_LIMIT = 512;
-    const NAIVE_MODIFIER_DEFINITIONS = [
-        { suffix: "ing", key: "ambileft_left" },
-        { suffix: "es", key: "ambiright_right" },
-        { suffix: "ed", key: "layer2_left", eEndingCompactSuffix: "d" },
-        { suffix: "er", key: "layer2_right", eEndingCompactSuffix: "r" },
-        { suffix: "s", key: "ambiright_right" }
-    ];
-    const MODIFIER_PSEUDO_ENTRY_CACHE = new Map();
 
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
         inputDisplayOverrides: "inputDisplayOverrides",
-        settings: "settings"
+        settings: "settings",
+        deviceState: "deviceState"
     };
 
     const STATE = {
         dictionary: null,
         settings: CCHShared.defaultSettings(),
+        deviceState: null,
         containerObserver: null,
         promptObserver: null,
         observedPromptContainer: null,
@@ -34,15 +28,11 @@
         promptRefreshTimer: null,
         lastPromptSignature: "",
         containerRebindTimer: null,
-        maxLookupWordCount: 1,
         overlayRoot: null,
         overlayLabels: [],
         overlayOutlines: [],
         overlayRepositionFrame: null,
         overlayResizeObserver: null,
-        substringLookup: null,
-        substringMatchCache: new Map(),
-        exactEntrySelectionCache: new Map(),
         hintLabelTemplateCache: new Map(),
         hintLabelClickDelegationInstalled: false,
         annotationMeasurementCache: null,
@@ -540,8 +530,6 @@
         };
 
         merged.enableSubstringHints = Boolean(merged.enableSubstringHints);
-        merged.enableNaiveModifierHints = Boolean(merged.enableNaiveModifierHints);
-        merged.suppressAffixMatchingInMiddleOfWords = Boolean(merged.suppressAffixMatchingInMiddleOfWords);
         merged.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(merged.minimumWordLength)
             : Math.max(1, Math.floor(Number(merged.minimumWordLength)) || 3);
@@ -932,101 +920,6 @@
         return CCHShared.normalizeTokenForLookup(wordRecordText(word));
     }
 
-    function stripPromptEdgeSpecialCharacters(text) {
-        return String(text || "")
-            .replace(/^[^\p{L}\p{N}\s]+/gu, "")
-            .replace(/[^\p{L}\p{N}\s]+$/gu, "");
-    }
-
-    function codePointsForText(text) {
-        return Array.from(String(text || ""))
-            .map((char) => char.codePointAt(0))
-            .filter((code) => Number.isFinite(code));
-    }
-
-    function modifierPseudoEntry(modifierKey, suffixText) {
-        const cacheKey = `${modifierKey}:${suffixText}`;
-        const cached = MODIFIER_PSEUDO_ENTRY_CACHE.get(cacheKey);
-        if (cached) {
-            return cached;
-        }
-
-        const token = CCHShared.makePseudoSpecialToken(modifierKey, modifierKey);
-        const entry = CCHShared.buildEntry({
-            index: -1,
-            inputSegments: [{
-                index: 0,
-                kind: "decoded",
-                inputCodes: [],
-                inputTokens: [token],
-                rawInput: `(${modifierKey})`,
-                editableText: "",
-                sortText: `(${modifierKey})`
-            }],
-            outputCodes: codePointsForText(suffixText),
-            status: 0,
-            userFlags: { displayEnabled: true }
-        });
-
-        MODIFIER_PSEUDO_ENTRY_CACHE.set(cacheKey, entry);
-        return entry;
-    }
-
-    function allowedModifierTexts(definition, baseEndsWithE) {
-        const variants = [definition.suffix];
-        if (baseEndsWithE && definition.eEndingCompactSuffix) {
-            variants.push(definition.eEndingCompactSuffix);
-        }
-        return variants;
-    }
-
-    function shiftModifierChain(chain, offset) {
-        return (Array.isArray(chain) ? chain : []).map((modifier) => ({
-            ...modifier,
-            start: modifier.start + offset,
-            end: modifier.end + offset
-        }));
-    }
-
-    function collectModifierChainsFromTrailingText(text, baseEndsWithE, memo = new Map()) {
-        const safeText = String(text || "");
-        const memoKey = `${baseEndsWithE ? "1" : "0"}:${safeText}`;
-        if (memo.has(memoKey)) {
-            return memo.get(memoKey);
-        }
-
-        if (!safeText) {
-            const baseChains = [[]];
-            memo.set(memoKey, baseChains);
-            return baseChains;
-        }
-
-        const chains = [];
-        NAIVE_MODIFIER_DEFINITIONS.forEach((definition) => {
-            allowedModifierTexts(definition, baseEndsWithE).forEach((matchedText) => {
-                if (!safeText.startsWith(matchedText)) {
-                    return;
-                }
-
-                const remainder = safeText.slice(matchedText.length);
-                collectModifierChainsFromTrailingText(remainder, baseEndsWithE, memo).forEach((remainderChain) => {
-                    chains.push([
-                        {
-                            ...definition,
-                            matchedText,
-                            start: 0,
-                            end: matchedText.length
-                        },
-                        ...shiftModifierChain(remainderChain, matchedText.length)
-                    ]);
-                });
-            });
-        });
-
-        memo.set(memoKey, chains);
-        return chains;
-    }
-
     function compareModifierChains(left, right) {
         const leftModifiers = Array.isArray(left) ? left : [];
         const rightModifiers = Array.isArray(right) ? right : [];
@@ -1046,154 +939,6 @@
         const leftKey = leftModifiers.map((modifier) => modifier.suffix).join("|");
         const rightKey = rightModifiers.map((modifier) => modifier.suffix).join("|");
         return leftKey.localeCompare(rightKey);
-    }
-
-    function compareNaiveModifierResolutions(left, right) {
-        const leftBaseLength = String(left?.baseWord || "").length;
-        const rightBaseLength = String(right?.baseWord || "").length;
-        if (leftBaseLength !== rightBaseLength) {
-            return rightBaseLength - leftBaseLength;
-        }
-
-        return compareModifierChains(left?.modifiers, right?.modifiers);
-    }
-
-    function modifierLabelsFromChain(modifiers, startOffset, wordLength) {
-        return (Array.isArray(modifiers) ? modifiers : []).map((modifier) => ({
-            entries: [modifierPseudoEntry(modifier.key, modifier.matchedText || modifier.suffix)],
-            anchor: {
-                type: "substring",
-                start: startOffset + modifier.start,
-                end: startOffset + modifier.end,
-                wordLength
-            }
-        }));
-    }
-
-    function naiveModifierExactCandidates(baseCandidate) {
-        if (!STATE.settings.enableNaiveModifierHints) {
-            return [];
-        }
-
-        const lookupText = String(baseCandidate?.lookupKey || "");
-        const matchNormalized = String(baseCandidate?.matchNormalized || "");
-        if (!lookupText || !matchNormalized) {
-            return [];
-        }
-
-        const words = lookupText.split(/\s+/u).filter(Boolean);
-        if (!words.length) {
-            return [];
-        }
-
-        const lastWord = words[words.length - 1];
-        const prefixText = words.length > 1 ? `${words.slice(0, -1).join(" ")} ` : "";
-        const baseOffset = Math.max(0, matchNormalized.indexOf(lookupText));
-        const wordLength = matchNormalized.length;
-        const resolutions = [];
-
-        for (let splitIndex = 1; splitIndex < lastWord.length; splitIndex += 1) {
-            const baseWord = lastWord.slice(0, splitIndex);
-            const trailingText = lastWord.slice(splitIndex);
-            const modifierChains = collectModifierChainsFromTrailingText(
-                trailingText,
-                baseWord.endsWith("e")
-            ).filter((chain) => chain.length);
-
-            modifierChains.forEach((chain) => {
-                resolutions.push({
-                    lookupKey: `${prefixText}${baseWord}`,
-                    anchor: baseCandidate.anchor,
-                    baseWord,
-                    modifiers: chain,
-                    labels: modifierLabelsFromChain(
-                        chain,
-                        baseOffset + prefixText.length + baseWord.length,
-                        wordLength
-                    )
-                });
-            });
-        }
-
-        return resolutions
-            .filter((resolution) => resolution.lookupKey !== lookupText)
-            .sort(compareNaiveModifierResolutions);
-    }
-
-    function naiveModifierLabelsForSubstringMatch(normalizedWord, baseEnd) {
-        if (!STATE.settings.enableNaiveModifierHints) {
-            return { labels: [], coverageEnd: baseEnd };
-        }
-
-        const safeNormalizedWord = String(normalizedWord || "");
-        const safeBaseEnd = Math.max(0, Math.min(safeNormalizedWord.length, Number(baseEnd) || 0));
-        const trailingText = safeNormalizedWord.slice(safeBaseEnd);
-        if (!trailingText) {
-            return { labels: [], coverageEnd: safeBaseEnd };
-        }
-
-        const chains = collectModifierChainsFromTrailingText(
-            trailingText,
-            safeNormalizedWord.slice(0, safeBaseEnd).endsWith("e")
-        ).filter((chain) => chain.length);
-        if (!chains.length) {
-            return { labels: [], coverageEnd: safeBaseEnd };
-        }
-
-        const bestChain = chains.slice().sort(compareModifierChains)[0];
-        return {
-            labels: modifierLabelsFromChain(bestChain, safeBaseEnd, safeNormalizedWord.length),
-            coverageEnd: safeNormalizedWord.length
-        };
-    }
-
-    function exactLookupCandidatesForText(rawText, strictNormalized = null, allowAnchor = false) {
-        const candidates = [];
-        const safeStrictNormalized = typeof strictNormalized === "string"
-            ? strictNormalized
-            : CCHShared.normalizeTokenForLookup(rawText);
-
-        if (safeStrictNormalized) {
-            candidates.push({
-                lookupKey: safeStrictNormalized,
-                matchNormalized: safeStrictNormalized,
-                anchor: null
-            });
-        }
-
-        const edgeStrippedText = stripPromptEdgeSpecialCharacters(rawText);
-        const edgeStrippedNormalized = CCHShared.normalizeTokenForLookup(edgeStrippedText);
-        const strictWordCount = safeStrictNormalized
-            ? safeStrictNormalized.split(/\s+/u).filter(Boolean).length
-            : 0;
-        const edgeStrippedWordCount = edgeStrippedNormalized
-            ? edgeStrippedNormalized.split(/\s+/u).filter(Boolean).length
-            : 0;
-        if (
-            edgeStrippedNormalized &&
-            edgeStrippedWordCount === strictWordCount &&
-            !candidates.some((candidate) => candidate.lookupKey === edgeStrippedNormalized)
-        ) {
-            const start = allowAnchor ? safeStrictNormalized.indexOf(edgeStrippedNormalized) : -1;
-            candidates.push({
-                lookupKey: edgeStrippedNormalized,
-                matchNormalized: safeStrictNormalized,
-                anchor: start >= 0
-                    ? {
-                        type: "substring",
-                        start,
-                        end: start + edgeStrippedNormalized.length,
-                        wordLength: safeStrictNormalized.length
-                    }
-                    : null
-            });
-        }
-
-        return candidates;
-    }
-
-    function wordRecordHasLookupText(word) {
-        return Boolean(wordRecordNormalizedText(word));
     }
 
     function wordRecordRect(word, useCachedRect = true) {
@@ -1660,38 +1405,9 @@
     }
 
     function refreshLookupMetadata() {
-        const normalizedOutputs = Object.keys(STATE.dictionary?.byNormalizedOutput || {});
-        STATE.maxLookupWordCount = Math.max(
-            1,
-            ...normalizedOutputs.map((key) => String(key).split(/\s+/u).filter(Boolean).length)
-        );
-        STATE.substringLookup = buildSubstringLookup();
-        STATE.substringMatchCache = new Map();
-        STATE.exactEntrySelectionCache = new Map();
-    }
-
-    function exactEntrySelectionCacheKey(normalized) {
-        return JSON.stringify({
-            normalized: String(normalized || ""),
-            selectionMode: STATE.settings.selectionMode,
-            includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
-            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle),
-            enableNaiveModifierHints: Boolean(STATE.settings.enableNaiveModifierHints)
-        });
-    }
-
-    function chooseEntriesForNormalizedOutput(normalized) {
-        const key = exactEntrySelectionCacheKey(normalized);
-        if (STATE.exactEntrySelectionCache.has(key)) {
-            return STATE.exactEntrySelectionCache.get(key);
+        if (typeof ChordingCoreAdapter !== "undefined") {
+            ChordingCoreAdapter.sync(STATE.dictionary, STATE.deviceState);
         }
-
-        const refs = STATE.dictionary?.byNormalizedOutput?.[normalized];
-        const chosen = refs?.length
-            ? CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings)
-            : null;
-        STATE.exactEntrySelectionCache.set(key, chosen);
-        return chosen;
     }
 
     function minimumWordLength() {
@@ -1700,406 +1416,156 @@
             : Math.max(1, Math.floor(Number(STATE.settings.minimumWordLength)) || 3);
     }
 
-    function phraseMeetsMinimumLength(rawText) {
-        const requiredLength = minimumWordLength();
-        const parts = String(rawText || "")
-            .split(/\s+/u)
-            .map((part) => CCHShared.normalizeTokenForLookup(part))
-            .filter(Boolean);
-
-        if (!parts.length) {
-            return false;
-        }
-
-        return parts.every((part) => Array.from(part).length >= requiredLength);
-    }
-
-    function buildSubstringLookup() {
-        const dictionary = STATE.dictionary;
-        if (!dictionary?.byNormalizedOutput) {
-            return {
-                byFirstCharacter: new Map(),
-                exactSingleWordMatches: new Set()
-            };
-        }
-
-        const byFirstCharacter = new Map();
-        const exactSingleWordMatches = new Set();
-
-        Object.entries(dictionary.byNormalizedOutput).forEach(([normalized, refs]) => {
-            const safeNormalized = String(normalized || "");
-            if (!safeNormalized || /\s/u.test(safeNormalized)) {
-                return;
-            }
-
-            exactSingleWordMatches.add(safeNormalized);
-
-            const refsByAffix = {
-                any: [],
-                prefix: [],
-                suffix: []
-            };
-
-            refs.forEach((ref) => {
-                const entry = dictionary.entries?.[ref];
-                const affixType = entry?.flags?.affixType || "any";
-                if (affixType === "prefix") {
-                    refsByAffix.prefix.push(ref);
-                } else if (affixType === "suffix") {
-                    refsByAffix.suffix.push(ref);
-                } else {
-                    refsByAffix.any.push(ref);
-                }
-            });
-
-            const firstCharacter = safeNormalized[0];
-            if (!firstCharacter) {
-                return;
-            }
-
-            const bucket = byFirstCharacter.get(firstCharacter) || [];
-            bucket.push({
-                normalized: safeNormalized,
-                length: safeNormalized.length,
-                refsByAffix
-            });
-            byFirstCharacter.set(firstCharacter, bucket);
-        });
-
-        byFirstCharacter.forEach((bucket) => {
-            bucket.sort((a, b) => {
-                if (b.length !== a.length) return b.length - a.length;
-                return a.normalized.localeCompare(b.normalized);
-            });
-        });
-
-        return { byFirstCharacter, exactSingleWordMatches };
-    }
-
-    function substringCacheKey(normalizedWord) {
-        return JSON.stringify({
-            normalizedWord,
-            minimumWordLength: minimumWordLength(),
-            selectionMode: STATE.settings.selectionMode,
-            includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
-            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle),
-            enableNaiveModifierHints: Boolean(STATE.settings.enableNaiveModifierHints)
-        });
-    }
-
-    function isAlphanumericBoundaryCharacter(char) {
-        return /[\p{L}\p{N}]/u.test(String(char || ""));
-    }
-
-    function isBoundaryStart(text, index) {
-        if (index <= 0) {
-            return true;
-        }
-
-        return !isAlphanumericBoundaryCharacter(text[index - 1]);
-    }
-
-    function isBoundaryEnd(text, index) {
-        if (index >= text.length) {
-            return true;
-        }
-
-        return !isAlphanumericBoundaryCharacter(text[index]);
-    }
-
-    function applicableSubstringRefs(candidate, startIndex, endIndex, text) {
-        const refs = [];
-        const suppressMidWordAffixMatching = Boolean(STATE.settings.suppressAffixMatchingInMiddleOfWords);
-        if (candidate.refsByAffix?.any?.length) {
-            refs.push(...candidate.refsByAffix.any);
-        }
-        if (!suppressMidWordAffixMatching && candidate.refsByAffix?.prefix?.length) {
-            refs.push(...candidate.refsByAffix.prefix);
-        } else if (isBoundaryStart(text, startIndex) && candidate.refsByAffix?.prefix?.length) {
-            refs.push(...candidate.refsByAffix.prefix);
-        }
-        if (!suppressMidWordAffixMatching && candidate.refsByAffix?.suffix?.length) {
-            refs.push(...candidate.refsByAffix.suffix);
-        } else if (isBoundaryEnd(text, endIndex) && candidate.refsByAffix?.suffix?.length) {
-            refs.push(...candidate.refsByAffix.suffix);
-        }
-        return refs;
-    }
-
-    function compareSubstringSolutions(a, b) {
-        if (a.coverage !== b.coverage) return a.coverage - b.coverage;
-        if (a.longestSegment !== b.longestSegment) return a.longestSegment - b.longestSegment;
-        if (a.segmentCount !== b.segmentCount) return b.segmentCount - a.segmentCount;
-        return b.firstStart - a.firstStart;
-    }
-
-    function solveBestSubstringCoverage(candidates) {
-        const sortedCandidates = candidates.slice().sort((a, b) => {
-            if (a.start !== b.start) return a.start - b.start;
-            if (b.length !== a.length) return b.length - a.length;
-            return a.normalized.localeCompare(b.normalized);
-        });
-
-        const memo = new Map();
-
-        function solve(index) {
-            if (index >= sortedCandidates.length) {
-                return {
-                    coverage: 0,
-                    longestSegment: 0,
-                    segmentCount: 0,
-                    firstStart: Number.POSITIVE_INFINITY,
-                    segments: []
-                };
-            }
-
-            if (memo.has(index)) {
-                return memo.get(index);
-            }
-
-            const skip = solve(index + 1);
-            const candidate = sortedCandidates[index];
-            let nextIndex = index + 1;
-            while (nextIndex < sortedCandidates.length && sortedCandidates[nextIndex].start < candidate.end) {
-                nextIndex += 1;
-            }
-
-            const includeTail = solve(nextIndex);
-            const include = {
-                coverage: candidate.length + includeTail.coverage,
-                longestSegment: Math.max(candidate.length, includeTail.longestSegment),
-                segmentCount: 1 + includeTail.segmentCount,
-                firstStart: candidate.start,
-                segments: [candidate, ...includeTail.segments]
-            };
-
-            const best = compareSubstringSolutions(include, skip) >= 0 ? include : skip;
-            memo.set(index, best);
-            return best;
-        }
-
-        return solve(0).segments;
-    }
-
-    function findSubstringMatchForWord(rawText, normalizedWord) {
-        if (!STATE.settings.enableSubstringHints) {
-            return { matched: false, reason: "substring-disabled", word: rawText, normalized: normalizedWord };
-        }
-
-        if (!phraseMeetsMinimumLength(rawText)) {
-            return { matched: false, reason: "below-minimum-length", word: rawText, normalized: normalizedWord };
-        }
-
-        const requiredLength = minimumWordLength();
-
-        if (STATE.substringLookup?.exactSingleWordMatches?.has(normalizedWord)) {
-            return { matched: false, reason: "exact-word-exists", word: rawText, normalized: normalizedWord };
-        }
-
-        const cacheKey = substringCacheKey(normalizedWord);
-        if (STATE.substringMatchCache.has(cacheKey)) {
-            const cached = STATE.substringMatchCache.get(cacheKey);
-            return cached
-                ? {
-                    matched: true,
-                    word: rawText,
-                    normalized: normalizedWord,
-                    labels: cached,
-                    wordCount: 1,
-                    isSubstringMatch: true
-                }
-                : { matched: false, reason: "no-substring-match", word: rawText, normalized: normalizedWord };
-        }
-
-        const seenCandidates = new Set();
-        const candidatePool = [];
-        for (const character of new Set(Array.from(normalizedWord))) {
-            const bucket = STATE.substringLookup?.byFirstCharacter?.get(character) || [];
-            for (const candidate of bucket) {
-                if (candidate.length >= normalizedWord.length) {
-                    continue;
-                }
-                if (seenCandidates.has(candidate.normalized)) {
-                    continue;
-                }
-                seenCandidates.add(candidate.normalized);
-                candidatePool.push(candidate);
+    // ------------------------------------------------------------------
+    // Stream plan: chording-core matches the whole paragraph text once
+    // (exhaustive Aho-Corasick + cost-model resolution), including
+    // multi-word phrases; the resolver plan is mapped back onto word
+    // records. The renderer consumes {wordIndex, result} pairs with the
+    // same label shapes the exact path used to produce.
+    // ------------------------------------------------------------------
+    function wordIndexForStreamOffset(offset, wordStart, wordEnd) {
+        for (let i = wordEnd.length - 1; i >= 0; i -= 1) {
+            if (offset >= wordStart[i] && offset < wordEnd[i]) {
+                return i;
             }
         }
+        return -1;
+    }
 
-        const segments = [];
-        for (const candidate of candidatePool) {
-            if (candidate.length < requiredLength) {
-                continue;
-            }
-
-            let searchIndex = 0;
-            while (searchIndex < normalizedWord.length) {
-                const matchIndex = normalizedWord.indexOf(candidate.normalized, searchIndex);
-                if (matchIndex === -1) {
-                    break;
-                }
-
-                const endIndex = matchIndex + candidate.normalized.length;
-                const refs = applicableSubstringRefs(candidate, matchIndex, endIndex, normalizedWord);
-                if (refs.length) {
-                    const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
-                    if (chosen.length) {
-                        const modifierSuffixResult = naiveModifierLabelsForSubstringMatch(normalizedWord, endIndex);
-                        segments.push({
-                            start: matchIndex,
-                            end: modifierSuffixResult.coverageEnd,
-                            length: modifierSuffixResult.coverageEnd - matchIndex,
-                            normalized: candidate.normalized,
-                            entries: chosen,
-                            baseStart: matchIndex,
-                            baseEnd: endIndex,
-                            modifierLabels: modifierSuffixResult.labels
-                        });
-                    }
-                }
-
-                searchIndex = matchIndex + 1;
-            }
-        }
-
-        const bestSegments = solveBestSubstringCoverage(segments).flatMap((segment) => ([
-            {
-                entries: segment.entries,
-                normalized: segment.normalized,
-                anchor: {
-                    type: "substring",
-                    start: segment.baseStart,
-                    end: segment.baseEnd,
-                    wordLength: normalizedWord.length
-                }
-            },
-            ...(Array.isArray(segment.modifierLabels) ? segment.modifierLabels : [])
-        ]));
-
-        STATE.substringMatchCache.set(cacheKey, bestSegments.length ? bestSegments : null);
-
-        if (!bestSegments.length) {
-            return { matched: false, reason: "no-substring-match", word: rawText, normalized: normalizedWord };
-        }
-
-        return {
-            matched: true,
-            word: rawText,
-            normalized: normalizedWord,
-            labels: bestSegments,
-            wordCount: 1,
-            isSubstringMatch: true
+    function buildParagraphStreamPlan(entry) {
+        const words = Array.isArray(entry?.words) ? entry.words : [];
+        const plan = {
+            byWord: new Map(),
+            matchedCount: 0,
+            unmatchedCount: words.length,
+            reason: null
         };
-    }
+        if (!words.length) return plan;
 
-    function findMatchFromWords(words, startIndex) {
-        if (!wordRecordHasLookupText(words[startIndex])) {
-            const rawText = wordRecordText(words[startIndex]);
-            return { matched: false, reason: "empty-normalized", word: rawText };
+        if (!STATE.settings.enableSubstringHints) {
+            plan.reason = "substring-disabled";
+            return plan;
+        }
+        if (typeof ChordingCoreAdapter === "undefined") {
+            plan.reason = "adapter-unavailable";
+            return plan;
+        }
+        if (!ChordingCoreAdapter.compiled) {
+            plan.reason = "no-device-state";
+            return plan;
         }
 
-        const maxWordCount = Math.min(
-            STATE.maxLookupWordCount || 1,
-            words.length - startIndex
-        );
-        const phraseTexts = [];
-        const strictNormalizedTexts = [];
-        let phrase = "";
+        const wordStart = [];
+        const wordEnd = [];
+        const parts = [];
+        let offset = 0;
+        for (let i = 0; i < words.length; i += 1) {
+            const normalized = wordRecordNormalizedText(words[i]);
+            const length = Array.from(String(normalized)).length;
+            wordStart[i] = offset;
+            wordEnd[i] = offset + length;
+            parts.push(normalized);
+            offset += length + 1; // one separator space between words
+        }
+        const stream = parts.join(" ");
 
-        for (let wordCount = 1; wordCount <= maxWordCount; wordCount += 1) {
-            const text = wordRecordText(words[startIndex + wordCount - 1]);
-            phrase = phrase ? `${phrase} ${text}` : text;
-            phraseTexts[wordCount] = phrase;
-            strictNormalizedTexts[wordCount] = wordCount === 1
-                ? wordRecordNormalizedText(words[startIndex])
-                : CCHShared.normalizeTokenForLookup(phrase);
+        const streamResult = ChordingCoreAdapter.matchText(stream);
+        if (!streamResult || !streamResult.matched) {
+            plan.reason = "no-substring-match";
+            return plan;
         }
 
-        for (let wordCount = maxWordCount; wordCount >= 1; wordCount -= 1) {
-            if (!wordRecordHasLookupText(words[startIndex + wordCount - 1])) {
-                continue;
-            }
+        const minLength = minimumWordLength();
+        for (const choice of streamResult.choices) {
+            // Trim separator spaces from the span edges so word
+            // attribution ignores the concatenator the space-forms add.
+            let textStart = choice.start;
+            let textEnd = choice.end;
+            while (textStart < textEnd && stream[textStart] === " ") textStart += 1;
+            while (textEnd > textStart && stream[textEnd - 1] === " ") textEnd -= 1;
+            if (textEnd - textStart < minLength) continue;
 
-            const rawText = phraseTexts[wordCount];
-            const strictNormalized = strictNormalizedTexts[wordCount];
+            const firstWord = wordIndexForStreamOffset(textStart, wordStart, wordEnd);
+            const lastWord = wordIndexForStreamOffset(textEnd - 1, wordStart, wordEnd);
+            if (firstWord < 0 || lastWord < 0) continue;
 
-            if (!strictNormalized) {
-                continue;
-            }
-
-            if (wordCount === 1 && !phraseMeetsMinimumLength(rawText)) {
-                continue;
-            }
-
-            const exactLookupCandidates = exactLookupCandidatesForText(rawText, strictNormalized, wordCount === 1);
-            for (const candidate of exactLookupCandidates) {
-                const chosen = chooseEntriesForNormalizedOutput(candidate.lookupKey);
-                if (!chosen) {
-                    continue;
-                }
-                if (!chosen.length) {
-                    return {
-                        matched: false,
-                        reason: "filtered-out",
-                        word: rawText,
-                        normalized: candidate.matchNormalized,
-                        wordCount
-                    };
-                }
-
+            const labelFor = (spanStart, spanEnd, sourceIndex) => {
+                const w = wordIndexForStreamOffset(spanStart, wordStart, wordEnd);
+                if (w < 0) return null;
+                // The hint renderer feeds each label entry to
+                // CCHShared.entryInputSegments; pass the dictionary entry
+                // object, not the bare index.
+                const entry = Array.isArray(STATE.dictionary?.entries)
+                    ? (STATE.dictionary.entries[sourceIndex] ?? sourceIndex)
+                    : sourceIndex;
                 return {
-                    matched: true,
-                    word: rawText,
-                    normalized: candidate.matchNormalized,
-                    labels: [{ entries: chosen, anchor: candidate.anchor }],
-                    wordCount,
-                    isSubstringMatch: false
+                    entries: [entry],
+                    anchor: {
+                        type: "substring",
+                        start: spanStart - wordStart[w],
+                        end: spanEnd - wordStart[w],
+                        wordLength: wordEnd[w] - wordStart[w]
+                    }
                 };
+            };
+
+            const result = {
+                matched: true,
+                word: wordRecordText(words[firstWord]),
+                normalized: null,
+                labels: [],
+                wordCount: lastWord - firstWord + 1,
+                isSubstringMatch: true
+            };
+
+            if (firstWord === lastWord) {
+                // Single-word span: substring anchors relative to the
+                // whole normalized word, matching the renderer's
+                // mapNormalizedOffsetsToRawOffsets contract.
+                result.normalized = wordRecordNormalizedText(words[firstWord]);
+                if (!choice.coveredByModifier) {
+                    const label = labelFor(textStart, textEnd, choice.sourceIndex);
+                    if (label) result.labels.push(label);
+                }
+                for (const mod of choice.modifiers) {
+                    const label = labelFor(mod.start, Math.min(mod.end, stream.length), mod.sourceIndex);
+                    if (label) result.labels.push(label);
+                }
+                if (!result.labels.length) continue;
+            } else {
+                // Multi-word phrase: anchor-less label; the renderer draws
+                // whole-word outlines across the span. Modifier labels are
+                // not attached to multi-word spans (renderer maps their
+                // anchors against the first word only).
+                if (choice.coveredByModifier) continue;
+                result.normalized = stream.slice(wordStart[firstWord], wordEnd[lastWord]);
+                result.labels.push({
+                    entries: [Array.isArray(STATE.dictionary?.entries)
+                        ? (STATE.dictionary.entries[choice.sourceIndex] ?? choice.sourceIndex)
+                        : choice.sourceIndex],
+                    anchor: null
+                });
             }
 
-            for (const candidate of exactLookupCandidates.flatMap((item) => naiveModifierExactCandidates(item))) {
-                const chosen = chooseEntriesForNormalizedOutput(candidate.lookupKey);
-                if (!chosen) {
-                    continue;
-                }
-                if (!chosen.length) {
-                    return {
-                        matched: false,
-                        reason: "filtered-out",
-                        word: rawText,
-                        normalized: strictNormalized,
-                        wordCount
-                    };
-                }
-
-                return {
-                    matched: true,
-                    word: rawText,
-                    normalized: strictNormalized,
-                    labels: [
-                        { entries: chosen, anchor: candidate.anchor },
-                        ...(Array.isArray(candidate.labels) ? candidate.labels : [])
-                    ],
-                    wordCount,
-                    isSubstringMatch: false
-                };
+            const existing = plan.byWord.get(firstWord);
+            if (existing && existing.wordCount === result.wordCount) {
+                // Two disjoint choices inside the same word: one result,
+                // multiple labels.
+                existing.labels.push(...result.labels);
+            } else {
+                plan.byWord.set(firstWord, result);
             }
         }
 
-        const rawText = phraseTexts[1] || "";
-        const normalized = wordRecordNormalizedText(words[startIndex]);
-
-        if (!normalized) {
-            return { matched: false, reason: "empty-normalized", word: rawText };
-        }
-
-        const substringResult = findSubstringMatchForWord(rawText, normalized);
-        if (substringResult.matched) {
-            return substringResult;
-        }
-
-        return { matched: false, reason: substringResult.reason || "no-dictionary-match", word: rawText, normalized };
+        plan.matchedCount = plan.byWord.size;
+        const covered = new Set();
+        plan.byWord.forEach((result, wordIndex) => {
+            for (let w = wordIndex; w < wordIndex + result.wordCount; w += 1) {
+                covered.add(w);
+            }
+        });
+        plan.unmatchedCount = Math.max(0, words.length - covered.size);
+        return plan;
     }
 
     function hintAlignmentClass() {
@@ -2905,6 +2371,13 @@
         }
 
         if (labelMatch?.anchor?.type === "substring" || Number(match?.wordCount) === 1) {
+            // chording-core fix: outline the anchor as ONE bounding rect.
+            // getClientRects() splits on style runs (untyped/typed chars),
+            // which made the dashed box split into segments.
+            const geometry = measuredSubstringGeometry(word, match, labelMatch);
+            if (geometry?.rect) {
+                return [geometry.rect];
+            }
             const measuredRects = measuredSubstringViewportRects(word, match, labelMatch);
             if (measuredRects.length) {
                 return measuredRects;
@@ -2952,6 +2425,10 @@
     }
 
     function outlineViewportRectForRecord(record) {
+        if (record?.mergedSpan) {
+            const rows = mergedMultiWordOutlineRects(record.mergedSpan, 0, record.mergedSpan.length);
+            return rows[record.mergedRowIndex ?? 0] || null;
+        }
         if (!record?.word) {
             return null;
         }
@@ -2960,12 +2437,84 @@
         return rects[record.rectIndex ?? 0] || null;
     }
 
+    function textRangeRectForWord(word) {
+        // The text-range rect (trailing whitespace excluded) mirrors what
+        // single-chord outlines measure, so phrase boxes hug the text the
+        // chord produces instead of the word element's padded rect.
+        const normalized = String(wordRecordNormalizedText(word) || "");
+        const trimmedLength = Array.from(normalized.replace(/\s+$/u, "")).length;
+        if (!trimmedLength) {
+            return null;
+        }
+        const geometry = measuredSubstringGeometry(
+            word,
+            { normalized },
+            { anchor: { type: "substring", start: 0, end: trimmedLength } }
+        );
+        return geometry?.rect || null;
+    }
+
+    function mergedMultiWordOutlineRects(words, startIndex, count) {
+        // One rect per visual row for a multi-word span: adjacent word
+        // rects on the same line merge into a single box so a phrase match
+        // does not render as split segments with overlapping padding.
+        const span = (Array.isArray(words) ? words : []).slice(startIndex, startIndex + Number(count || 0));
+        const wordRects = span
+            .map((word) => textRangeRectForWord(word) || wordRecordRect(word, hasActiveAnnotationMeasurementCache()))
+            .filter((rect) => rect && rect.width > 0 && rect.height > 0);
+        if (!wordRects.length) {
+            return [];
+        }
+
+        const rows = [];
+        for (const rect of wordRects) {
+            const row = rows[rows.length - 1];
+            if (row && Math.abs(rect.top - row.top) < Math.max(rect.height, row.height) * 0.5) {
+                row.left = Math.min(row.left, rect.left);
+                row.right = Math.max(row.right, rect.right);
+                row.top = Math.min(row.top, rect.top);
+                row.bottom = Math.max(row.bottom, rect.bottom);
+                row.width = row.right - row.left;
+                row.height = row.bottom - row.top;
+            } else {
+                rows.push({
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    width: rect.width,
+                    height: rect.height
+                });
+            }
+        }
+
+        return rows;
+    }
+
+    function mergedMultiWordOutlineRecords(words, startIndex, match) {
+        const span = (Array.isArray(words) ? words : [])
+            .slice(startIndex, startIndex + Number(match?.wordCount || 1));
+        return mergedMultiWordOutlineRects(words, startIndex, span.length)
+            .map((_, mergedRowIndex) => ({
+                word: span[0],
+                match: null,
+                labelMatch: null,
+                rectIndex: 0,
+                mergedSpan: span,
+                mergedRowIndex
+            }));
+    }
+
     function appendInlineOutlines(words, startIndex, match, labelMatch) {
         if (!STATE.settings.showChordableWordOutlines) {
             return;
         }
 
-        outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
+        const isMultiWordSpan = Number(match?.wordCount) > 1 && labelMatch?.anchor?.type !== "substring";
+        const records = isMultiWordSpan
+            ? mergedMultiWordOutlineRecords(words, startIndex, match)
+            : outlineRecordsForMatch(words, startIndex, match, labelMatch);
+        records.forEach((record) => {
             const rect = outlineViewportRectForRecord(record);
             const hostEl = entertrainedInlineOutlinePlacement(record) || wordRecordElement(record.word);
             const hostRect = hostEl instanceof HTMLElement
@@ -2995,7 +2544,11 @@
             return;
         }
 
-        outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
+        const isMultiWordSpan = Number(match?.wordCount) > 1 && labelMatch?.anchor?.type !== "substring";
+        const records = isMultiWordSpan
+            ? mergedMultiWordOutlineRecords(words, startIndex, match)
+            : outlineRecordsForMatch(words, startIndex, match, labelMatch);
+        records.forEach((record) => {
             const outline = createOutlineElement();
             const nextRecord = {
                 ...record,
@@ -3199,30 +2752,40 @@
 
         const words = Array.isArray(entry?.words) ? entry.words : [];
         const misses = includeDebugSummary ? [] : null;
-        const matchPlans = [];
-        let matchedCount = 0;
-        let unmatchedCount = 0;
         const planningStartedAt = typeof performance?.now === "function" ? performance.now() : Date.now();
 
+        const streamPlan = buildParagraphStreamPlan(entry);
+        const matchPlans = [];
+        const coveredWords = new Set();
+
+        streamPlan.byWord.forEach((result, wordIndex) => {
+            matchPlans.push({ wordIndex, result });
+            for (let w = wordIndex; w < wordIndex + result.wordCount; w += 1) {
+                coveredWords.add(w);
+            }
+        });
+        matchPlans.sort((a, b) => a.wordIndex - b.wordIndex);
+
+        let unmatchedCount = 0;
         for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
-            const result = findMatchFromWords(words, wordIndex);
-            if (result.matched) {
-                matchedCount += 1;
-                matchPlans.push({ wordIndex, result });
-                wordIndex += result.wordCount - 1;
-            } else {
-                unmatchedCount += 1;
-                if (includeDebugSummary) {
-                    misses.push({
-                        ...result,
-                        wordIndex
-                    });
-                }
+            if (coveredWords.has(wordIndex)) {
+                continue;
+            }
+            unmatchedCount += 1;
+            if (includeDebugSummary) {
+                misses.push({
+                    matched: false,
+                    reason: streamPlan.reason || "no-dictionary-match",
+                    word: wordRecordText(words[wordIndex]),
+                    normalized: wordRecordNormalizedText(words[wordIndex]),
+                    wordIndex
+                });
             }
         }
 
         entry.matchPlans = matchPlans;
-        entry.matchedCount = matchedCount;
+        entry.matchPlanByWord = streamPlan.byWord;
+        entry.matchedCount = streamPlan.matchedCount;
         entry.unmatchedCount = unmatchedCount;
         entry.misses = misses;
         entry.planningElapsedMs = elapsedDebugMs(planningStartedAt);
@@ -3408,11 +2971,12 @@
             chunkedPlanState.nextWordIndex <= safeTargetWordIndex
         ) {
             const wordIndex = chunkedPlanState.nextWordIndex;
-            const result = findMatchFromWords(words, wordIndex);
+            const paragraphPlan = ensureParagraphMatchPlan(entry);
+            const result = paragraphPlan.matchPlanByWord.get(wordIndex);
 
-            if (result.matched) {
+            if (result) {
                 chunkedPlanState.matchPlanMap.set(wordIndex, result);
-                chunkedPlanState.nextWordIndex = wordIndex + result.wordCount;
+                chunkedPlanState.nextWordIndex = wordIndex + (result.wordCount || 1);
             } else {
                 chunkedPlanState.nextWordIndex = wordIndex + 1;
             }
@@ -3893,12 +3457,14 @@
         const stored = await getStorage([
             STORAGE_KEYS.parsedDictionary,
             STORAGE_KEYS.inputDisplayOverrides,
-            STORAGE_KEYS.settings
+            STORAGE_KEYS.settings,
+            STORAGE_KEYS.deviceState
         ]);
         STATE.dictionary = CCHShared.applyInputDisplayOverrides(
             stored[STORAGE_KEYS.parsedDictionary],
             stored[STORAGE_KEYS.inputDisplayOverrides]
         );
+        STATE.deviceState = stored[STORAGE_KEYS.deviceState] || null;
         refreshLookupMetadata();
         STATE.settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
         applyAppearanceSettings();
@@ -4098,17 +3664,19 @@
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "local") return;
 
-        if (changes[STORAGE_KEYS.parsedDictionary] || changes[STORAGE_KEYS.inputDisplayOverrides]) {
-            const keysToReload = [STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides];
+        if (changes[STORAGE_KEYS.parsedDictionary] || changes[STORAGE_KEYS.inputDisplayOverrides] || changes[STORAGE_KEYS.deviceState]) {
+            const keysToReload = [STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides, STORAGE_KEYS.deviceState];
             chrome.storage.local.get(keysToReload, (stored) => {
                 STATE.dictionary = CCHShared.applyInputDisplayOverrides(
                     stored[STORAGE_KEYS.parsedDictionary],
                     stored[STORAGE_KEYS.inputDisplayOverrides]
                 );
+                STATE.deviceState = stored[STORAGE_KEYS.deviceState] || null;
                 refreshLookupMetadata();
                 resetHintLabelTemplateCache("dictionary-change");
                 log("Dictionary changed", {
-                    entryCount: STATE.dictionary?.entryCount ?? 0
+                    entryCount: STATE.dictionary?.entryCount ?? 0,
+                    hasDeviceState: Boolean(STATE.deviceState)
                 });
                 scheduleAnnotation(true);
             });

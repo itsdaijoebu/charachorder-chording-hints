@@ -233,7 +233,6 @@
             ...(settings.specialTokenDescriptions || {})
         };
         settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
-        settings.suppressAffixMatchingInMiddleOfWords = Boolean(settings.suppressAffixMatchingInMiddleOfWords);
         settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
             : Math.max(1, Math.floor(Number(settings.minimumWordLength)) || 3);
