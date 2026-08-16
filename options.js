@@ -318,7 +318,7 @@
         }
 
         const rawHintTextSizeValue = settings.hint_text_font_size_value ?? settings.hint_text_font_size_em;
-        settings.hint_text_font_size_value = clampNumber(rawHintTextSizeValue, 0.1, 64, 0.5);
+        settings.hint_text_font_size_value = clampNumber(rawHintTextSizeValue, 0.1, 64, 0.9);
         settings.hint_text_font_size_unit = ["em", "px"].includes(settings.hint_text_font_size_unit)
             ? settings.hint_text_font_size_unit
             : "em";

@@ -1242,9 +1242,9 @@
       hint_box_light_mode_opacity: 0.96,
       hint_text_light_mode_color: "#d0d1d7",
 
-      hint_text_font_size_value: 0.5,
+      hint_text_font_size_value: 0.9,
       hint_text_font_size_unit: "em",
-      hint_text_font_size_em: 0.5,
+      hint_text_font_size_em: 0.9,
       hint_position: "left",
       hint_display: "always",
       keybr_hint_layout: "extra-spacing",
