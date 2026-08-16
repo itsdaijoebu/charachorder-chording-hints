@@ -179,6 +179,21 @@
     const result = C.matchChordable(text, adapter.compiled);
     if (result.candidates.length === 0) return null;
 
+    // Device mechanic [GT: CCOS-firmware e2e, autocorrect + prepended
+    // fixtures]: chording deletes recently typed text up to the last
+    // hyperspace (concatenator; space by default) before the chord output.
+    // A candidate is physically valid only when the text from the previous
+    // hyperspace up to its start is empty — its (space-trimmed) start must
+    // sit directly after a hyperspace or at stream start. Mid-word starts
+    // would destroy or corrupt the preceding text, so they never reach the
+    // resolver.
+    result.candidates = result.candidates.filter((candidate) => {
+      let s = candidate.start;
+      while (s < candidate.end && text[s] === " ") s += 1;
+      return s === 0 || text[s - 1] === " ";
+    });
+    if (result.candidates.length === 0) return null;
+
     const plan = C.resolveChordable(result, adapter.compiled, {
       baseChordCost: 1,
       charCost: 1,

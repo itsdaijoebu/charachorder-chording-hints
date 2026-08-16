@@ -93,6 +93,7 @@ check("gated: base+modifier modifier label", r4 && r4.choices.some((c) => c.modi
 A.sync(dict, deviceState);
 check("gated: unbound input excluded", A.matchText(" zed ") === null);
 
+
 // 9. Arpeggiate compound (base + arp chord, gated on 81/85)
 const r5 = A.matchText(" great! ");
 check("gated: arpeggiate compound", r5 && r5.choices.some((c) => c.start === 1 && c.end === 7));
@@ -110,5 +111,30 @@ check("gated: 49=0 kills matching", A.matchText(" great ") === null);
 A.sync({ entries: [{ index: 0, inputCodes: [103], outputCodes: [532, 103] }] }, deviceState);
 check("gated: GTM reBindPending", A.reBindPending === true);
 check("gated: GTM no forms", A.matchText(" g ") === null);
+
+// 13. Hyperspace boundary gate [OWNER mechanic]: chording deletes text up
+// to the last hyperspace, so a choice must start right after a space (or
+// at stream start).
+A.sync({
+  entries: [
+    { index: 0, inputCodes: [99, 111, 110], outputCodes: [99, 111, 110, 99, 101, 105, 118, 101, 100, 32, 111, 102] }, // "conceived of"
+    { index: 1, inputCodes: [102, 111], outputCodes: [111, 102] }, // "of"
+  ],
+}, deviceState);
+const r7 = A.matchText("(conceived of as) having no name");
+check("boundary: paren-preceded phrase rejected", r7 && !r7.choices.some((c) => c.start === 1));
+check("boundary: word-boundary 'of' kept", r7 && r7.choices.some((c) => c.start === 11 && c.end === 14));
+
+const r8 = A.matchText("conceived of as) having no name");
+check("boundary: stream-start phrase kept", r8 && r8.choices.some((c) => c.start === 0 && c.end === 13));
+
+// internal-word bare chord rejected (would delete the typed prefix)
+A.sync({
+  entries: [{ index: 0, inputCodes: [112, 108, 97], outputCodes: [112, 108, 97, 99, 101, 256] }], // "place" bare
+}, deviceState);
+const rMid = A.matchText("hippoplacephobia");
+check("boundary: mid-word bare chord rejected", !rMid || rMid.choices.length === 0);
+const r9 = A.matchText(" place ");
+check("boundary: word-start bare chord kept", r9 && r9.choices.some((c) => c.start === 1));
 
 process.exit(failures === 0 ? 0 : 1);

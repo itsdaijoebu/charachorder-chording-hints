@@ -48,14 +48,21 @@ paths consumed (`selectionMode`, `includeArpeggiates`,
 `includeModifierStyle`, `enableNaiveModifierHints`) are gone from the
 options page.
 
+### Hyperspace-boundary gate
+Chording revises text since the last hyperspace (concatenator; space by
+default) before the chord output — documented by the official firmware
+e2e corpus (`autocorrect/dup_chord.yml` deletes, `smart_detection/
+prepended/dup_chord.yml` with σ(54)=0 does not). A candidate is
+admissible only when its start sits directly after a hyperspace or at
+stream start; mid-word starts (e.g. a chord beginning after an opening
+paren) are dropped before resolution.
+
 ### Data-gated heuristics
 Anything that should be heuristically guided is data gated for
 implementation: heuristics that price how chords are *actually* typed
-(e.g. internal-word chords followed by a backspace when the chord appends
-a trailing space, or symbolic `+`/`->` hint annotations for modifiers and
-pre/post actions) need real typing-speed data before they can be
-implemented accurately. No such data is collected today, so no such
-heuristics ship.
+(e.g. symbolic `+`/`->` hint annotations for modifiers and pre/post
+actions) need real typing-speed data before they can be implemented
+accurately. No such data is collected today, so no such heuristics ship.
 
 
 ## Installation
