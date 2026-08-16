@@ -941,16 +941,6 @@
         return leftKey.localeCompare(rightKey);
     }
 
-    function compareNaiveModifierResolutions(left, right) {
-        const leftBaseLength = String(left?.baseWord || "").length;
-        const rightBaseLength = String(right?.baseWord || "").length;
-        if (leftBaseLength !== rightBaseLength) {
-            return rightBaseLength - leftBaseLength;
-        }
-
-        return compareModifierChains(left?.modifiers, right?.modifiers);
-    }
-
     function wordRecordRect(word, useCachedRect = true) {
         if (
             useCachedRect &&
