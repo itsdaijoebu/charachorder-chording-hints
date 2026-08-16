@@ -1502,8 +1502,14 @@
             const labelFor = (spanStart, spanEnd, sourceIndex) => {
                 const w = wordIndexForStreamOffset(spanStart, wordStart, wordEnd);
                 if (w < 0) return null;
+                // The hint renderer feeds each label entry to
+                // CCHShared.entryInputSegments; pass the dictionary entry
+                // object, not the bare index.
+                const entry = Array.isArray(STATE.dictionary?.entries)
+                    ? (STATE.dictionary.entries[sourceIndex] ?? sourceIndex)
+                    : sourceIndex;
                 return {
-                    entries: [sourceIndex],
+                    entries: [entry],
                     anchor: {
                         type: "substring",
                         start: spanStart - wordStart[w],
@@ -1543,7 +1549,12 @@
                 // anchors against the first word only).
                 if (choice.coveredByModifier) continue;
                 result.normalized = stream.slice(wordStart[firstWord], wordEnd[lastWord]);
-                result.labels.push({ entries: [choice.sourceIndex], anchor: null });
+                result.labels.push({
+                    entries: [Array.isArray(STATE.dictionary?.entries)
+                        ? (STATE.dictionary.entries[choice.sourceIndex] ?? choice.sourceIndex)
+                        : choice.sourceIndex],
+                    anchor: null
+                });
             }
 
             const existing = plan.byWord.get(firstWord);
