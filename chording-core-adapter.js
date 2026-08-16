@@ -171,20 +171,16 @@
     adapter.dictionaryVersion += 1;
   };
 
-  adapter.matchWord = function (rawText, normalizedWord, opts) {
+  // Full-text match over an arbitrary stream (words, separators, phrases).
+  // Returns per-choice spans in stream coordinates plus attached suffix
+  // modifier labels. No word concept here; the caller maps spans to words.
+  adapter.matchText = function (text) {
     if (!adapter.compiled) return null;
-    const minLen = Number(opts?.minimumWordLength ?? 0) || 0;
-    if (normalizedWord.length < minLen) return null;
-
-    // Canonical space forms ("great " trailing / " great" leading) require
-    // the adjacent concatenator, which is not part of the word itself.
-    // Match against the word padded with one space on each side and map
-    // anchors back into word coordinates.
-    const padded = " " + normalizedWord + " ";
-    const result = C.matchChordable(padded, adapter.compiled);
+    const result = C.matchChordable(text, adapter.compiled);
     if (result.candidates.length === 0) return null;
 
     const plan = C.resolveChordable(result, adapter.compiled, {
+      baseChordCost: 1,
       charCost: 1,
       switchCost: 0.25,
       widthCostPerExtraKey: 0.15,
@@ -198,14 +194,6 @@
       variantHyperspaceCost: 0.1,
     });
 
-    // Map resolver choices from padded-text coordinates back to word
-    // coordinates; drop choices that only covered the padding.
-    for (const choice of plan.choices) {
-      choice.start = Math.max(0, choice.start - 1);
-      choice.end = Math.min(normalizedWord.length, choice.end - 1);
-    }
-    plan.choices = plan.choices.filter((choice) => choice.end > choice.start);
-
     // Modifier spans already claimed by a suffix-modifier label suppress the
     // plain chord choice at the same span (no duplicate hints).
     const modifierSpans = [];
@@ -213,61 +201,45 @@
       for (const mod of adapter.suffixModifiers) {
         const modText = String(mod.text || "");
         if (!modText) continue;
-        if (normalizedWord.startsWith(modText, choice.end)) {
-          modifierSpans.push([choice.end, Math.min(choice.end + modText.length, normalizedWord.length)]);
+        if (text.startsWith(modText, choice.end)) {
+          modifierSpans.push([choice.end, choice.end + modText.length]);
           break;
         }
       }
     }
 
-    const labels = [];
+    const choices = [];
     for (const choice of plan.choices) {
       const coveredByModifier = modifierSpans.some(
         ([ms, me]) => choice.start === ms && choice.end === me
       );
-      if (!coveredByModifier) {
-        const src = adapter.formSource[choice.entryIndex] ?? choice.entryIndex;
-        labels.push({
-          entries: [src],
-          anchor: {
-            type: "substring",
-            start: choice.start,
-            end: choice.end,
-            wordLength: normalizedWord.length,
-          },
-        });
-      }
-
+      const item = {
+        start: choice.start,
+        end: choice.end,
+        sourceIndex: adapter.formSource[choice.entryIndex] ?? choice.entryIndex,
+        coveredByModifier,
+        modifiers: []
+      };
       // Suffix modifier chords shown with the hint: if the text right
-      // after the matched chord starts with a modifier's output, append a
-      // modifier label for it.
+      // after the matched chord starts with a modifier's output, attach a
+      // modifier label (same-word only: modifier text has no spaces, so it
+      // cannot cross a separator).
       for (const mod of adapter.suffixModifiers) {
         const modText = String(mod.text || "");
         if (!modText) continue;
-        const at = choice.end;
-        if (normalizedWord.startsWith(modText, at)) {
-          labels.push({
-            entries: [mod.sourceIndex],
-            anchor: {
-              type: "substring",
-              start: at,
-              end: Math.min(at + modText.length, normalizedWord.length),
-              wordLength: normalizedWord.length,
-            },
+        if (text.startsWith(modText, choice.end)) {
+          item.modifiers.push({
+            sourceIndex: mod.sourceIndex,
+            start: choice.end,
+            end: choice.end + modText.length
           });
           break; // one modifier per matched chord
         }
       }
+      choices.push(item);
     }
 
-    return {
-      matched: labels.length > 0,
-      word: rawText,
-      normalized: normalizedWord,
-      labels,
-      wordCount: 1,
-      isSubstringMatch: true,
-    };
+    return { matched: choices.length > 0, choices };
   };
 
   global.ChordingCoreAdapter = adapter;

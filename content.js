@@ -951,10 +951,6 @@
         return compareModifierChains(left?.modifiers, right?.modifiers);
     }
 
-    function wordRecordHasLookupText(word) {
-        return Boolean(wordRecordNormalizedText(word));
-    }
-
     function wordRecordRect(word, useCachedRect = true) {
         if (
             useCachedRect &&
@@ -1430,69 +1426,145 @@
             : Math.max(1, Math.floor(Number(STATE.settings.minimumWordLength)) || 3);
     }
 
-    function phraseMeetsMinimumLength(rawText) {
-        const requiredLength = minimumWordLength();
-        const parts = String(rawText || "")
-            .split(/\s+/u)
-            .map((part) => CCHShared.normalizeTokenForLookup(part))
-            .filter(Boolean);
-
-        if (!parts.length) {
-            return false;
-        }
-
-        return parts.every((part) => Array.from(part).length >= requiredLength);
-    }
-
-    function findSubstringMatchForWord(rawText, normalizedWord) {
-        if (!STATE.settings.enableSubstringHints) {
-            return { matched: false, reason: "substring-disabled", word: rawText, normalized: normalizedWord };
-        }
-
-        if (!phraseMeetsMinimumLength(rawText)) {
-            return { matched: false, reason: "below-minimum-length", word: rawText, normalized: normalizedWord };
-        }
-
-        const requiredLength = minimumWordLength();
-
-        // chording-core: substring matching is entirely delegated to the
-        // adapter (exhaustive Aho-Corasick + cost-model resolution).
-        if (typeof ChordingCoreAdapter !== "undefined") {
-            const adapterResult = ChordingCoreAdapter.matchWord(rawText, normalizedWord, {
-                minimumWordLength: requiredLength
-            });
-            if (adapterResult && adapterResult.matched) {
-                return adapterResult;
+    // ------------------------------------------------------------------
+    // Stream plan: chording-core matches the whole paragraph text once
+    // (exhaustive Aho-Corasick + cost-model resolution), including
+    // multi-word phrases; the resolver plan is mapped back onto word
+    // records. The renderer consumes {wordIndex, result} pairs with the
+    // same label shapes the exact path used to produce.
+    // ------------------------------------------------------------------
+    function wordIndexForStreamOffset(offset, wordStart, wordEnd) {
+        for (let i = wordEnd.length - 1; i >= 0; i -= 1) {
+            if (offset >= wordStart[i] && offset < wordEnd[i]) {
+                return i;
             }
-            const reason = ChordingCoreAdapter.compiled ? "no-substring-match" : "no-device-state";
-            return { matched: false, reason, word: rawText, normalized: normalizedWord };
         }
-
-        return { matched: false, reason: "adapter-unavailable", word: rawText, normalized: normalizedWord };
+        return -1;
     }
 
-    function findMatchFromWords(words, startIndex) {
-        if (!wordRecordHasLookupText(words[startIndex])) {
-            const rawText = wordRecordText(words[startIndex]);
-            return { matched: false, reason: "empty-normalized", word: rawText };
+    function buildParagraphStreamPlan(entry) {
+        const words = Array.isArray(entry?.words) ? entry.words : [];
+        const plan = {
+            byWord: new Map(),
+            matchedCount: 0,
+            unmatchedCount: words.length,
+            reason: null
+        };
+        if (!words.length) return plan;
+
+        if (!STATE.settings.enableSubstringHints) {
+            plan.reason = "substring-disabled";
+            return plan;
+        }
+        if (typeof ChordingCoreAdapter === "undefined") {
+            plan.reason = "adapter-unavailable";
+            return plan;
+        }
+        if (!ChordingCoreAdapter.compiled) {
+            plan.reason = "no-device-state";
+            return plan;
         }
 
-        const rawText = wordRecordText(words[startIndex]);
-        const normalized = wordRecordNormalizedText(words[startIndex]);
+        const wordStart = [];
+        const wordEnd = [];
+        const parts = [];
+        let offset = 0;
+        for (let i = 0; i < words.length; i += 1) {
+            const normalized = wordRecordNormalizedText(words[i]);
+            const length = Array.from(String(normalized)).length;
+            wordStart[i] = offset;
+            wordEnd[i] = offset + length;
+            parts.push(normalized);
+            offset += length + 1; // one separator space between words
+        }
+        const stream = parts.join(" ");
 
-        if (!normalized) {
-            return { matched: false, reason: "empty-normalized", word: rawText };
+        const streamResult = ChordingCoreAdapter.matchText(stream);
+        if (!streamResult || !streamResult.matched) {
+            plan.reason = "no-substring-match";
+            return plan;
         }
 
-        // chording-core: the exact-word path is removed. Every word goes
-        // through the chording-core matcher (exhaustive substring matching
-        // with cost-model resolution covers exact words too).
-        const substringResult = findSubstringMatchForWord(rawText, normalized);
-        if (substringResult.matched) {
-            return substringResult;
+        const minLength = minimumWordLength();
+        for (const choice of streamResult.choices) {
+            // Trim separator spaces from the span edges so word
+            // attribution ignores the concatenator the space-forms add.
+            let textStart = choice.start;
+            let textEnd = choice.end;
+            while (textStart < textEnd && stream[textStart] === " ") textStart += 1;
+            while (textEnd > textStart && stream[textEnd - 1] === " ") textEnd -= 1;
+            if (textEnd - textStart < minLength) continue;
+
+            const firstWord = wordIndexForStreamOffset(textStart, wordStart, wordEnd);
+            const lastWord = wordIndexForStreamOffset(textEnd - 1, wordStart, wordEnd);
+            if (firstWord < 0 || lastWord < 0) continue;
+
+            const labelFor = (spanStart, spanEnd, sourceIndex) => {
+                const w = wordIndexForStreamOffset(spanStart, wordStart, wordEnd);
+                if (w < 0) return null;
+                return {
+                    entries: [sourceIndex],
+                    anchor: {
+                        type: "substring",
+                        start: spanStart - wordStart[w],
+                        end: spanEnd - wordStart[w],
+                        wordLength: wordEnd[w] - wordStart[w]
+                    }
+                };
+            };
+
+            const result = {
+                matched: true,
+                word: wordRecordText(words[firstWord]),
+                normalized: null,
+                labels: [],
+                wordCount: lastWord - firstWord + 1,
+                isSubstringMatch: true
+            };
+
+            if (firstWord === lastWord) {
+                // Single-word span: substring anchors relative to the
+                // whole normalized word, matching the renderer's
+                // mapNormalizedOffsetsToRawOffsets contract.
+                result.normalized = wordRecordNormalizedText(words[firstWord]);
+                if (!choice.coveredByModifier) {
+                    const label = labelFor(textStart, textEnd, choice.sourceIndex);
+                    if (label) result.labels.push(label);
+                }
+                for (const mod of choice.modifiers) {
+                    const label = labelFor(mod.start, Math.min(mod.end, stream.length), mod.sourceIndex);
+                    if (label) result.labels.push(label);
+                }
+                if (!result.labels.length) continue;
+            } else {
+                // Multi-word phrase: anchor-less label; the renderer draws
+                // whole-word outlines across the span. Modifier labels are
+                // not attached to multi-word spans (renderer maps their
+                // anchors against the first word only).
+                if (choice.coveredByModifier) continue;
+                result.normalized = stream.slice(wordStart[firstWord], wordEnd[lastWord]);
+                result.labels.push({ entries: [choice.sourceIndex], anchor: null });
+            }
+
+            const existing = plan.byWord.get(firstWord);
+            if (existing && existing.wordCount === result.wordCount) {
+                // Two disjoint choices inside the same word: one result,
+                // multiple labels.
+                existing.labels.push(...result.labels);
+            } else {
+                plan.byWord.set(firstWord, result);
+            }
         }
 
-        return { matched: false, reason: substringResult.reason || "no-dictionary-match", word: rawText, normalized };
+        plan.matchedCount = plan.byWord.size;
+        const covered = new Set();
+        plan.byWord.forEach((result, wordIndex) => {
+            for (let w = wordIndex; w < wordIndex + result.wordCount; w += 1) {
+                covered.add(w);
+            }
+        });
+        plan.unmatchedCount = Math.max(0, words.length - covered.size);
+        return plan;
     }
 
     function hintAlignmentClass() {
@@ -2599,30 +2671,40 @@
 
         const words = Array.isArray(entry?.words) ? entry.words : [];
         const misses = includeDebugSummary ? [] : null;
-        const matchPlans = [];
-        let matchedCount = 0;
-        let unmatchedCount = 0;
         const planningStartedAt = typeof performance?.now === "function" ? performance.now() : Date.now();
 
+        const streamPlan = buildParagraphStreamPlan(entry);
+        const matchPlans = [];
+        const coveredWords = new Set();
+
+        streamPlan.byWord.forEach((result, wordIndex) => {
+            matchPlans.push({ wordIndex, result });
+            for (let w = wordIndex; w < wordIndex + result.wordCount; w += 1) {
+                coveredWords.add(w);
+            }
+        });
+        matchPlans.sort((a, b) => a.wordIndex - b.wordIndex);
+
+        let unmatchedCount = 0;
         for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
-            const result = findMatchFromWords(words, wordIndex);
-            if (result.matched) {
-                matchedCount += 1;
-                matchPlans.push({ wordIndex, result });
-                wordIndex += result.wordCount - 1;
-            } else {
-                unmatchedCount += 1;
-                if (includeDebugSummary) {
-                    misses.push({
-                        ...result,
-                        wordIndex
-                    });
-                }
+            if (coveredWords.has(wordIndex)) {
+                continue;
+            }
+            unmatchedCount += 1;
+            if (includeDebugSummary) {
+                misses.push({
+                    matched: false,
+                    reason: streamPlan.reason || "no-dictionary-match",
+                    word: wordRecordText(words[wordIndex]),
+                    normalized: wordRecordNormalizedText(words[wordIndex]),
+                    wordIndex
+                });
             }
         }
 
         entry.matchPlans = matchPlans;
-        entry.matchedCount = matchedCount;
+        entry.matchPlanByWord = streamPlan.byWord;
+        entry.matchedCount = streamPlan.matchedCount;
         entry.unmatchedCount = unmatchedCount;
         entry.misses = misses;
         entry.planningElapsedMs = elapsedDebugMs(planningStartedAt);
@@ -2808,11 +2890,12 @@
             chunkedPlanState.nextWordIndex <= safeTargetWordIndex
         ) {
             const wordIndex = chunkedPlanState.nextWordIndex;
-            const result = findMatchFromWords(words, wordIndex);
+            const paragraphPlan = ensureParagraphMatchPlan(entry);
+            const result = paragraphPlan.matchPlanByWord.get(wordIndex);
 
-            if (result.matched) {
+            if (result) {
                 chunkedPlanState.matchPlanMap.set(wordIndex, result);
-                chunkedPlanState.nextWordIndex = wordIndex + result.wordCount;
+                chunkedPlanState.nextWordIndex = wordIndex + (result.wordCount || 1);
             } else {
                 chunkedPlanState.nextWordIndex = wordIndex + 1;
             }

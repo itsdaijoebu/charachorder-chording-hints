@@ -34,6 +34,9 @@ const dict = {
     { index: 1, inputCodes: [101, 114], outputCodes: [574, 101, 114] }, // er modifier (JOIN prefix)
     { index: 2, inputCodes: [1001, 33], outputCodes: [574, 33] }, // arpeggiate chord "!"
     { index: 3, inputCodes: [999, 100], outputCodes: [122, 101, 100] }, // "zed" with UNBOUND input 999
+    { index: 4, inputCodes: [116, 104, 101], outputCodes: [116, 104, 101] }, // the
+    { index: 5, inputCodes: [113, 117, 105, 99, 107], outputCodes: [113, 117, 105, 99, 107] }, // quick
+    { index: 6, inputCodes: [116, 113, 32], outputCodes: [116, 104, 101, 32, 113, 117, 105, 99, 107] }, // "the quick" phrase chord
   ],
 };
 
@@ -42,60 +45,70 @@ function check(name, cond) {
   if (cond) console.log("PASS", name);
   else { console.log("FAIL", name); failures += 1; }
 }
+const span = (r, i) => (r && r.choices && r.choices[i]) ? [r.choices[i].start, r.choices[i].end] : null;
 
 // 1. Fail closed without device state
 A.sync(dict, null);
 check("no-device-state: compiled null", A.compiled === null);
 check("no-device-state: mode", A.mode === "no-device-state");
-check("no-device-state: matchWord null", A.matchWord("great", "great", { minimumWordLength: 3 }) === null);
+check("no-device-state: matchText null", A.matchText("great") === null);
 
 // 2. Gated mode compiles
 A.sync(dict, deviceState);
 check("gated: compiled", A.compiled !== null);
 check("gated: mode", A.mode === "gated");
 
-// 3. Bound chord matches; trailing-space form covers the bare word
-const r1 = A.matchWord("great", "great", { minimumWordLength: 3 });
+// 3. Trailing-space form covers the bare word (stream " great " -> span [1,7))
+const r1 = A.matchText(" great ");
 check("gated: great matches", r1 && r1.matched === true);
-check("gated: great label span [0,5)", r1.labels.some((l) => l.anchor.start === 0 && l.anchor.end === 5));
+check("gated: great span [1,7)", r1.choices.some((c) => c.start === 1 && c.end === 7));
+check("gated: great source entry 0", r1.choices[0].sourceIndex === 0);
+// 4. Multi-word phrase chord matches across the stream with exact offsets
+const r2 = A.matchText("the quick brown fox");
+check("gated: phrase chord matches", r2 && r2.matched);
+const phraseChoice = (r2?.choices || []).find((c) => c.start === 0 && c.end === 10);
+check("gated: phrase span [0,10) incl. concatenator", Boolean(phraseChoice));
+check("gated: phrase source entry 6", phraseChoice?.sourceIndex === 6);
 
-// 4. 85=0 ("all"): base+modifier compound covers "greater" as one hint
-const r2 = A.matchWord("greater", "greater", { minimumWordLength: 3 });
-check("gated: 85=0 compound covers greater", r2.labels.some((l) => l.anchor.start === 0 && l.anchor.end === 7));
+// 5. Resolver picks phrase chord over two single chords (one action vs two)
+check("gated: resolver prefers phrase chord", (r2?.choices || []).length === 1);
 
-// 5. 85=2 (arpeggiate chords only): chord-modifier compounds off. A base
-// chord with inhibit (256) has a bare form, so base + modifier split a word:
-// "gr" [0,2) bare + "eat" modifier [2,5).
+// 6. 85=0 ("all"): base+modifier compound covers "greater" as one span
+const r3 = A.matchText(" greater ");
+check("gated: 85=0 compound covers greater", r3 && r3.choices.some((c) => c.start === 1 && c.end === 8));
+
+// 7. 85=2 (arpeggiate chords only): chord-modifier compounds off. A base
+// chord with inhibit (256) has a bare form, so base + modifier split a word.
 A.sync({
   entries: [
     { index: 0, inputCodes: [103, 114], outputCodes: [103, 114, 256] }, // "gr" bare (inhibit)
     { index: 1, inputCodes: [101, 97, 116], outputCodes: [574, 101, 97, 116] }, // "eat" modifier
   ],
 }, { ...deviceState, settings: { ...deviceState.settings, 85: 2 } });
-const r2b = A.matchWord("great", "great", { minimumWordLength: 3 });
-check("gated: base+modifier labels", r2b.labels.some((l) => l.anchor.start === 0 && l.anchor.end === 2) && r2b.labels.some((l) => l.anchor.start === 2 && l.anchor.end === 5));
+const r4 = A.matchText(" great ");
+check("gated: base+modifier base label", r4 && r4.choices.some((c) => c.start === 1 && c.end === 3 && !c.coveredByModifier));
+check("gated: base+modifier modifier label", r4 && r4.choices.some((c) => c.modifiers.some((m) => m.start === 3 && m.end === 6)));
 
-// 6. Unbound input chord is excluded by the gates
+// 8. Unbound input chord is excluded by the gates
 A.sync(dict, deviceState);
-const r3 = A.matchWord("zed", "zed", { minimumWordLength: 3 });
-check("gated: unbound input excluded", r3 === null);
+check("gated: unbound input excluded", A.matchText(" zed ") === null);
 
-// 7. Arpeggiate compound (base + arp chord, gated on 81/85)
-const r4 = A.matchWord("great!", "great!", { minimumWordLength: 3 });
-check("gated: arpeggiate compound", r4 && r4.labels.some((l) => l.anchor.start === 0 && l.anchor.end === 6));
+// 9. Arpeggiate compound (base + arp chord, gated on 81/85)
+const r5 = A.matchText(" great! ");
+check("gated: arpeggiate compound", r5 && r5.choices.some((c) => c.start === 1 && c.end === 7));
 
-// 8. Arpeggiates disabled (81=0) kills the compound
+// 10. Arpeggiates disabled (81=0) kills the compound
 A.sync(dict, { ...deviceState, settings: { ...deviceState.settings, 81: 0 } });
-const r5 = A.matchWord("great!", "great!", { minimumWordLength: 3 });
-check("gated: 81=0 kills compound", r5 === null || !r5.labels.some((l) => l.anchor.end === 6));
+const r6 = A.matchText(" great! ");
+check("gated: 81=0 kills compound", r6 === null || !r6.choices.some((c) => c.end === 7));
 
-// 9. Chording disabled (49=0) kills all forms
+// 11. Chording disabled (49=0) kills all forms
 A.sync(dict, { ...deviceState, settings: { ...deviceState.settings, 49: 0 } });
-check("gated: 49=0 kills matching", A.matchWord("great", "great", { minimumWordLength: 3 }) === null);
+check("gated: 49=0 kills matching", A.matchText(" great ") === null);
 
-// 10. GTM scope cut flags reBind and drops forms
+// 12. GTM scope cut flags reBind and drops forms
 A.sync({ entries: [{ index: 0, inputCodes: [103], outputCodes: [532, 103] }] }, deviceState);
 check("gated: GTM reBindPending", A.reBindPending === true);
-check("gated: GTM no forms", A.matchWord("g", "g", { minimumWordLength: 1 }) === null);
+check("gated: GTM no forms", A.matchText(" g ") === null);
 
 process.exit(failures === 0 ? 0 : 1);
