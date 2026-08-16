@@ -48,14 +48,17 @@ paths consumed (`selectionMode`, `includeArpeggiates`,
 `includeModifierStyle`, `enableNaiveModifierHints`) are gone from the
 options page.
 
-### Hyperspace-boundary gate
+### Hyperspace-boundary gate (σ(54)-aware)
 Chording revises text since the last hyperspace (concatenator; space by
 default) before the chord output — documented by the official firmware
 e2e corpus (`autocorrect/dup_chord.yml` deletes, `smart_detection/
-prepended/dup_chord.yml` with σ(54)=0 does not). A candidate is
-admissible only when its start sits directly after a hyperspace or at
-stream start; mid-word starts (e.g. a chord beginning after an opening
-paren) are dropped before resolution.
+prepended/dup_chord.yml` with σ(54)=0 does not). With autocorrect on
+(σ(54) > 0, the default) a candidate is admissible only when its start
+sits directly after a hyperspace or at stream start; mid-word starts
+(e.g. a chord beginning after an opening paren) are dropped before
+resolution. With autocorrect off (σ(54) = 0) the output appends, so
+mid-word candidates are admitted — setting σ(54) to 0 is the device-side
+change that makes chords after punctuation typeable.
 
 ### Data-gated heuristics
 Anything that should be heuristically guided is data gated for

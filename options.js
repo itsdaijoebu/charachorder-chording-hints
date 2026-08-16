@@ -1657,8 +1657,9 @@
 
     // SPEC-2 setting ids consumed by the chording-core decision gates,
     // read over VAR B1 per SPEC-7: 49 chording enable, 62 concatenation
-    // style, 81 arpeggiates enable, 85 arpeggiates mode, 112 layer warp.
-    const GATE_SETTING_IDS = [49, 62, 81, 85, 112];
+    // style, 54 autocorrect attempts (hyperspace-boundary gate), 81
+    // arpeggiates enable, 85 arpeggiates mode, 112 layer warp.
+    const GATE_SETTING_IDS = [49, 54, 62, 81, 85, 112];
 
     // Key counts per device model (SPEC-7 §3).
     const DEVICE_KEY_COUNTS = {

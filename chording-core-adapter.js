@@ -29,8 +29,9 @@
 
   // SPEC-2 setting ids consumed by the verified decision core, read over
   // VAR B1 per SPEC-7 (hex id): 49 chording enable, 62 concatenation
-  // style, 81 arpeggiates enable, 85 arpeggiates mode, 112 layer warp.
-  const GATE_SETTING_IDS = [49, 62, 81, 85, 112];
+  // style, 54 autocorrect attempts (hyperspace-boundary gate), 81
+  // arpeggiates enable, 85 arpeggiates mode, 112 layer warp.
+  const GATE_SETTING_IDS = [49, 54, 62, 81, 85, 112];
 
   // Mirrors chordRender.corePhrase (string layer; not itself verified).
   function corePhrase(output) {
@@ -167,6 +168,10 @@
     adapter.compiled = C.compileChordDictionary(formEntries);
     adapter.formSource = formSource;
     adapter.suffixModifiers = buildSuffixModifiers(chords, feasible);
+    // sigma(54) > 0 = autocorrect on: chording deletes text since the
+    // last hyperspace, so candidates must start at a hyperspace boundary.
+    // sigma(54) = 0: output appends, no start constraint.
+    adapter.autocorrectOn = Number(deviceState.settings?.[54]) !== 0;
     adapter.mode = "gated";
     adapter.dictionaryVersion += 1;
   };
@@ -180,18 +185,21 @@
     if (result.candidates.length === 0) return null;
 
     // Device mechanic [GT: CCOS-firmware e2e, autocorrect + prepended
-    // fixtures]: chording deletes recently typed text up to the last
-    // hyperspace (concatenator; space by default) before the chord output.
-    // A candidate is physically valid only when the text from the previous
-    // hyperspace up to its start is empty — its (space-trimmed) start must
-    // sit directly after a hyperspace or at stream start. Mid-word starts
-    // would destroy or corrupt the preceding text, so they never reach the
-    // resolver.
-    result.candidates = result.candidates.filter((candidate) => {
-      let s = candidate.start;
-      while (s < candidate.end && text[s] === " ") s += 1;
-      return s === 0 || text[s - 1] === " ";
-    });
+    // fixtures]: with autocorrect on (sigma(54) > 0), chording deletes
+    // recently typed text up to the last hyperspace (concatenator; space
+    // by default) before the chord output. A candidate is then physically
+    // valid only when the text from the previous hyperspace up to its
+    // start is empty — its (space-trimmed) start must sit directly after
+    // a hyperspace or at stream start. Mid-word starts would destroy the
+    // preceding text and never reach the resolver. With autocorrect off
+    // (sigma(54) = 0) the output appends, so no start constraint.
+    if (adapter.autocorrectOn) {
+      result.candidates = result.candidates.filter((candidate) => {
+        let s = candidate.start;
+        while (s < candidate.end && text[s] === " ") s += 1;
+        return s === 0 || text[s - 1] === " ";
+      });
+    }
     if (result.candidates.length === 0) return null;
 
     const plan = C.resolveChordable(result, adapter.compiled, {

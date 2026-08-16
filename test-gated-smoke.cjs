@@ -137,4 +137,21 @@ check("boundary: mid-word bare chord rejected", !rMid || rMid.choices.length ===
 const r9 = A.matchText(" place ");
 check("boundary: word-start bare chord kept", r9 && r9.choices.some((c) => c.start === 1));
 
+// 14. sigma(54)=0 (autocorrect off): output appends, so mid-word bare
+// chords are admissible and the paren-prefixed phrase works.
+const off54 = { ...deviceState, settings: { ...deviceState.settings, 54: 0 } };
+A.sync({
+  entries: [{ index: 0, inputCodes: [112, 108, 97], outputCodes: [112, 108, 97, 99, 101, 256] }], // "place" bare
+}, off54);
+const rMid2 = A.matchText("hippoplacephobia");
+check("sigma54=0: mid-word bare chord allowed", rMid2 && rMid2.choices.some((c) => c.start === 5 && c.end === 10));
+A.sync({
+  entries: [
+    { index: 0, inputCodes: [99, 111, 110], outputCodes: [99, 111, 110, 99, 101, 105, 118, 101, 100, 32, 111, 102] }, // "conceived of"
+    { index: 1, inputCodes: [102, 111], outputCodes: [111, 102] },
+  ],
+}, off54);
+const rParen = A.matchText("(conceived of as) having no name");
+check("sigma54=0: paren-prefixed phrase allowed", rParen && rParen.choices.some((c) => c.start === 1 && c.end === 14));
+
 process.exit(failures === 0 ? 0 : 1);
