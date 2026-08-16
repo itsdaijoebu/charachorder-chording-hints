@@ -19,6 +19,33 @@ Note that using this extension with Keybr places the cursor in a weird place at 
   - Also useful for seeing that you can chord "great", then hit the "er" modifier to turn it into "greater". 
   - Outlines and non-whole word hints can be turned off if you find them distracting.
 
+## Matching model (this fork)
+Substring matching is delegated to
+[`Tactile-Taco/chording-core`](https://github.com/Tactile-Taco/chording-core)
+(Aho-Corasick matcher + cost-model resolver + Lean-verified decision core).
+Gated mode only, no fallback:
+
+- The options page **Full sync** reads the chord library (`CML`), the device
+  settings consumed by the decision gates (`VAR B1`: 49 chording enable,
+  62 concatenation style, 81 arpeggiates enable, 85 arpeggiates mode,
+  112 layer warp), and the bound layout (`VAR B3`, profile A layers).
+- An action expands the output space only if it is bound in the live
+  layout or reachable via a bound chord output; chord inputs must be
+  physically feasible (layer-dynamics F-gate). Settings modulate matching
+  (concatenation style, arpeggiate/modifier compounding, warp).
+- Without a device state nothing matches (fail closed). JSON import loads
+  chords for the exact-word path and the editor, but substring hints stay
+  disabled until a full sync.
+
+### Data-gated heuristics
+Anything that should be heuristically guided is data gated for
+implementation: heuristics that price how chords are *actually* typed
+(e.g. internal-word chords followed by a backspace when the chord appends
+a trailing space, or symbolic `+`/`->` hint annotations for modifiers and
+pre/post actions) need real typing-speed data before they can be
+implemented accurately. No such data is collected today, so no such
+heuristics ship.
+
 
 ## Installation
 Getting it from the [Chrome Web Store](https://chromewebstore.google.com/detail/chording-hints/kjonpbdnebghldijannjicojhkmebjmn) would be the easiest method for installation and ensuring the extension stays up-to-date.

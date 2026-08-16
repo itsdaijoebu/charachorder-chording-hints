@@ -5,7 +5,8 @@
         exportWordPreferences: "exportWordPreferences",
         exportFilterSettings: "exportFilterSettings",
         settings: "settings",
-        optionsSyncIntent: "optionsSyncIntent"
+        optionsSyncIntent: "optionsSyncIntent",
+        deviceState: "deviceState"
     };
 
     const PAGE_SIZE = 25;
@@ -16,7 +17,7 @@
 
     let currentPage = 1;
     let currentRawDictionary = null;
-    let currentDictionary = null;
+    let currentDeviceState = null;
     let inputDisplayOverrides = {};
     let currentSort = {key: "output", direction: "asc"};
     let expandedEditorRows = new Set();
@@ -55,7 +56,6 @@
         includeModifierStyle: document.getElementById("includeModifierStyle"),
         enableSubstringHints: document.getElementById("enableSubstringHints"),
         enableNaiveModifierHints: document.getElementById("enableNaiveModifierHints"),
-        suppressAffixMatchingInMiddleOfWords: document.getElementById("suppressAffixMatchingInMiddleOfWords"),
         showChordableWordOutlines: document.getElementById("showChordableWordOutlines"),
         minimumWordLength: document.getElementById("minimumWordLength"),
         hintCharacterOrderMode: document.getElementById("hintCharacterOrderMode"),
@@ -309,7 +309,6 @@
 
         settings.enableSubstringHints = Boolean(settings.enableSubstringHints);
         settings.enableNaiveModifierHints = Boolean(settings.enableNaiveModifierHints);
-        settings.suppressAffixMatchingInMiddleOfWords = Boolean(settings.suppressAffixMatchingInMiddleOfWords);
         settings.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(settings.minimumWordLength)
             : Math.max(1, Math.floor(Number(settings.minimumWordLength)) || 3);
@@ -1109,7 +1108,6 @@
             includeModifierStyle: els.includeModifierStyle.checked,
             enableSubstringHints: els.enableSubstringHints.checked,
             enableNaiveModifierHints: els.enableNaiveModifierHints.checked,
-            suppressAffixMatchingInMiddleOfWords: els.suppressAffixMatchingInMiddleOfWords.checked,
             showChordableWordOutlines: els.showChordableWordOutlines.checked,
             minimumWordLength: CCHShared.normalizeMinimumWordLength
                 ? CCHShared.normalizeMinimumWordLength(els.minimumWordLength.value)
@@ -1191,7 +1189,6 @@
         els.includeModifierStyle.checked = settings.includeModifierStyle;
         els.enableSubstringHints.checked = settings.enableSubstringHints;
         els.enableNaiveModifierHints.checked = settings.enableNaiveModifierHints;
-        els.suppressAffixMatchingInMiddleOfWords.checked = settings.suppressAffixMatchingInMiddleOfWords;
         els.showChordableWordOutlines.checked = settings.showChordableWordOutlines;
         els.minimumWordLength.value = settings.minimumWordLength;
         els.hintCharacterOrderMode.value = settings.hintCharacterOrderMode;
@@ -1671,6 +1668,59 @@
         return Number.parseInt(match[1], 10);
     }
 
+    // SPEC-2 setting ids consumed by the chording-core decision gates,
+    // read over VAR B1 per SPEC-7: 49 chording enable, 62 concatenation
+    // style, 81 arpeggiates enable, 85 arpeggiates mode, 112 layer warp.
+    const GATE_SETTING_IDS = [49, 62, 81, 85, 112];
+
+    // Key counts per device model (SPEC-7 §3).
+    const DEVICE_KEY_COUNTS = {
+        ONE: 90,
+        TWO: 90,
+        M4G: 90,
+        M4GR: 90,
+        LITE: 67,
+        X: 256,
+        ENGINE: 256,
+        ZERO: 256,
+        T4G: 7,
+        CCB: 7
+    };
+
+    function parseVarB1Line(line) {
+        const match = String(line || "").trim().match(/^VAR\s+B1\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)$/);
+        if (!match) return null;
+        return {
+            hexId: match[1].toUpperCase(),
+            value: Number.parseInt(match[2], 10),
+            status: Number.parseInt(match[3], 10)
+        };
+    }
+
+    function parseVarB3Line(line) {
+        const match = String(line || "").trim().match(/^VAR\s+B3\s+([ABC][1-4])\s+(\d+)\s+(\d+)\s+(\d+)$/);
+        if (!match) return null;
+        return {
+            layer: match[1].toUpperCase(),
+            key: Number.parseInt(match[2], 10),
+            position: Number.parseInt(match[3], 10),
+            status: Number.parseInt(match[4], 10)
+        };
+    }
+
+    function deviceCapabilities(idFields, version) {
+        // SPEC-7 §3: profiles/layers gate on chipset and firmware version.
+        const chipset = String(idFields?.[2] || "").toUpperCase();
+        const model = String(idFields?.[1] || "").toUpperCase();
+        const isM0 = chipset === "M0";
+        const profiles = isM0 ? 1 : 3;
+        const versionParts = String(version || "").split("-")[0].split(".").map((part) => Number.parseInt(part, 10) || 0);
+        const atLeast220 = versionParts[0] > 2 || (versionParts[0] === 2 && versionParts[1] >= 2);
+        const layers = isM0 ? 3 : (atLeast220 ? 4 : 3);
+        const keyCount = DEVICE_KEY_COUNTS[model] ?? 90;
+        return { profiles, layers, keyCount, chipset, model };
+    }
+
     function parseCmlC1Line(line) {
         const match = String(line || "").trim().match(/^CML\s+C1\s+(\d+)\s+([0-9A-Fa-f]{32})\s+([0-9A-Fa-f]*)\s+(\d+)$/);
         if (!match) return null;
@@ -2015,7 +2065,7 @@
         return cloneInputSegments(resolvedSegments);
     }
 
-    async function fetchSerialChordmapDictionary() {
+    async function fetchFullDeviceSync() {
         if (!navigator.serial) {
             throw new Error("Web Serial is not available in this browser context.");
         }
@@ -2027,9 +2077,34 @@
             port = await navigator.serial.requestPort();
             console.log("[CCH serial] selected port info", port.getInfo?.() || {});
             await port.open({baudRate: SERIAL_BAUD_RATE});
-            console.log("[CCH serial] port opened for full chordmap sync");
+            console.log("[CCH serial] port opened for full device sync");
             await sleep(100);
             session = await openSerialSession(port);
+
+            setStatus(els.importStatus, "Identifying connected Charachorder...");
+            const cmdLines = await sendSerialCommand(session, "CMD", /^CMD\b/, SERIAL_ENTRY_TIMEOUT_MS);
+            const cmdLine = (Array.isArray(cmdLines) ? cmdLines : [])
+                .map((line) => String(line || "").trim())
+                .find((line) => /^CMD\b/.test(line)) || "";
+            const versionLines = await sendSerialCommand(session, "VERSION", /^VERSION\b/, SERIAL_ENTRY_TIMEOUT_MS);
+            const versionLine = (Array.isArray(versionLines) ? versionLines : [])
+                .map((line) => String(line || "").trim())
+                .find((line) => /^VERSION\b/.test(line)) || "";
+            const idLines = await sendSerialCommand(session, "ID", /^ID\b/, SERIAL_ENTRY_TIMEOUT_MS);
+            const idLine = (Array.isArray(idLines) ? idLines : [])
+                .map((line) => String(line || "").trim())
+                .find((line) => /^ID\b/.test(line)) || "";
+            await sleep(1);
+
+            const version = versionLine ? versionLine.replace(/^VERSION\s+/, "").trim() : null;
+            const idFields = idLine ? idLine.replace(/^ID\s+/, "").trim().split(/\s+/) : [];
+            const caps = deviceCapabilities(idFields, version);
+            const supportsVar = /\bVAR\b/.test(cmdLine);
+            console.log("[CCH serial] device identity", { version, idFields, caps, cmdLine, supportsVar });
+
+            if (!supportsVar) {
+                throw new Error("This firmware does not expose VAR (settings/layout) commands. Full sync requires firmware that advertises VAR via CMD (3.0.0+).");
+            }
 
             setStatus(els.importStatus, "Fetching chordmap count from connected Charachorder...");
             const countLines = await sendSerialCommand(session, "CML C0", /^CML\s+C0\b/, SERIAL_COUNT_TIMEOUT_MS);
@@ -2100,6 +2175,70 @@
                 });
             }
 
+
+            const settings = {};
+            setStatus(els.importStatus, "Reading device settings...");
+            for (const id of GATE_SETTING_IDS) {
+                const hexId = id.toString(16);
+                const lines = await sendSerialCommand(session, `VAR B1 ${hexId}`, /^VAR\s+B1\b/, SERIAL_ENTRY_TIMEOUT_MS);
+                await sleep(1);
+                const line = (Array.isArray(lines) ? lines : [])
+                    .map((candidate) => String(candidate || "").trim())
+                    .find((candidate) => /^VAR\s+B1\b/.test(candidate));
+                const parsed = parseVarB1Line(line);
+                if (parsed && parsed.status === 0) {
+                    settings[id] = parsed.value;
+                } else {
+                    console.warn("[CCH serial] VAR B1 read failed", { id, hexId, line });
+                }
+            }
+
+            const layout = [];
+            let layoutReadFailures = 0;
+            setStatus(els.importStatus, "Reading device layout...");
+            for (let layerIdx = 0; layerIdx < caps.layers; layerIdx += 1) {
+                const layerTag = `A${layerIdx + 1}`;
+                for (let key = 0; key < caps.keyCount; key += 1) {
+                    if (key === 0 || key % 30 === 0 || key === caps.keyCount - 1) {
+                        setStatus(els.importStatus, `Reading device layout: layer ${layerTag}, key ${key}/${caps.keyCount}`);
+                    }
+                    const lines = await sendSerialCommand(session, `VAR B3 ${layerTag} ${key}`, /^VAR\s+B3\b/, SERIAL_ENTRY_TIMEOUT_MS);
+                    await sleep(1);
+                    const line = (Array.isArray(lines) ? lines : [])
+                        .map((candidate) => String(candidate || "").trim())
+                        .find((candidate) => /^VAR\s+B3\b/.test(candidate));
+                    const parsed = parseVarB3Line(line);
+                    if (parsed && parsed.status === 0) {
+                        layout.push(parsed.position);
+                    } else {
+                        layoutReadFailures += 1;
+                        console.warn("[CCH serial] VAR B3 read failed", { layerTag, key, line });
+                        layout.push(0); // fault tolerance: treat slot as unbound
+                    }
+                }
+            }
+            if (layoutReadFailures > 0) {
+                setStatus(els.importStatus, `Layout read had ${layoutReadFailures} failures; affected slots treated as unbound.`, true);
+            }
+
+            const deviceState = {
+                source: "serial",
+                version,
+                id: { company: idFields[0] || null, device: idFields[1] || null, chipset: idFields[2] || null },
+                profiles: caps.profiles,
+                layers: caps.layers,
+                keyCount: caps.keyCount,
+                slotsPerLayer: caps.keyCount,
+                settings,
+                layout,
+                syncedAt: new Date().toISOString()
+            };
+            console.log("[CCH serial] device state read", {
+                settings,
+                layoutSlots: layout.length,
+                layoutReadFailures
+            });
+
             const hashLookup = buildCompoundHashLookup(serialEntries);
             const resolvedSegmentMemo = new Map();
             const entries = serialEntries.map((serialEntry) => CCHShared.buildEntry({
@@ -2114,25 +2253,35 @@
                 userFlags: {displayEnabled: true}
             }));
 
-            return CCHShared.buildParsedDictionary({
+            const dictionary = CCHShared.buildParsedDictionary({
                 entries,
                 source: "serial",
                 deviceEntryCount: entryCount,
                 charaVersion: null
             });
+            return { dictionary, deviceState };
         } finally {
             await closeSerialSessionQuietly(session);
             await closePortQuietly(port);
         }
     }
 
-    async function saveParsedDictionary(parsedDictionary, successMessage) {
+    async function saveParsedDictionary(parsedDictionary, deviceState, successMessage) {
         const nextExportWordPreferences = CCHShared.pruneExportWordPreferences(exportWordPreferences, parsedDictionary);
-        await setStorage({
+        const storageUpdate = {
             [STORAGE_KEYS.parsedDictionary]: parsedDictionary,
             [STORAGE_KEYS.inputDisplayOverrides]: {},
             [STORAGE_KEYS.exportWordPreferences]: nextExportWordPreferences
-        });
+        };
+        if (deviceState) {
+            storageUpdate[STORAGE_KEYS.deviceState] = deviceState;
+        }
+        await setStorage(storageUpdate);
+        if (!deviceState) {
+            // No gated matching without a device state: fail closed.
+            await removeStorage([STORAGE_KEYS.deviceState]);
+        }
+        currentDeviceState = deviceState || null;
         currentRawDictionary = parsedDictionary;
         inputDisplayOverrides = {};
         exportWordPreferences = nextExportWordPreferences;
@@ -2163,7 +2312,7 @@
             const raw = await readChosenText();
             const parsed = JSON.parse(raw);
             const parsedDictionary = CCHShared.parseChordJson(parsed);
-            await saveParsedDictionary(parsedDictionary, `Saved ${parsedDictionary.entryCount} chord entries from JSON.`);
+            await saveParsedDictionary(parsedDictionary, null, `Saved ${parsedDictionary.entryCount} chord entries from JSON. Substring hints stay disabled until a full device sync.`);
 
             console.log("[CCH options] parsed and saved JSON chord dictionary", {
                 source: parsedDictionary.source,
@@ -2183,14 +2332,14 @@
             setBusy(true);
             setStatus(els.importStatus, "Preparing device sync...");
 
-            const parsedDictionary = await fetchSerialChordmapDictionary();
-            await saveParsedDictionary(parsedDictionary, `Saved ${parsedDictionary.entryCount} chord entries from connected Charachorder.`);
+            const { dictionary: parsedDictionary, deviceState } = await fetchFullDeviceSync();
+            await saveParsedDictionary(parsedDictionary, deviceState, `Full sync saved ${parsedDictionary.entryCount} chord entries plus device settings and layout.`);
 
-            console.log("[CCH options] parsed and saved serial chord dictionary", {
+            console.log("[CCH options] parsed and saved full device state", {
                 source: parsedDictionary.source,
                 deviceEntryCount: parsedDictionary.deviceEntryCount,
                 entryCount: parsedDictionary.entryCount,
-                sample: parsedDictionary.entries.slice(0, 5)
+                deviceState
             });
         } catch (error) {
             console.error(error);
@@ -2228,7 +2377,7 @@
     function showPendingSyncPrompt() {
         setStatus(
             els.importStatus,
-            'Ready to sync. Click "Sync chords directly from device" and select your device from the menu.'
+            'Ready to sync. Click "Full sync: chords, settings, layout" and select your device from the menu.'
         );
 
         els.syncDeviceButton.classList.add("pendingSync");
@@ -2262,8 +2411,9 @@
     async function clearDictionary() {
         try {
             setBusy(true);
-            await removeStorage([STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides, STORAGE_KEYS.exportWordPreferences]);
+            await removeStorage([STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides, STORAGE_KEYS.exportWordPreferences, STORAGE_KEYS.deviceState]);
             currentRawDictionary = null;
+            currentDeviceState = null;
             currentDictionary = null;
             inputDisplayOverrides = {};
             exportWordPreferences = {};
@@ -2474,9 +2624,11 @@
             STORAGE_KEYS.inputDisplayOverrides,
             STORAGE_KEYS.exportWordPreferences,
             STORAGE_KEYS.exportFilterSettings,
-            STORAGE_KEYS.settings
+            STORAGE_KEYS.settings,
+            STORAGE_KEYS.deviceState
         ]);
         currentRawDictionary = hydrateDictionary(stored[STORAGE_KEYS.parsedDictionary]);
+        currentDeviceState = stored[STORAGE_KEYS.deviceState] || null;
         inputDisplayOverrides = stored[STORAGE_KEYS.inputDisplayOverrides] || {};
         exportWordPreferences = CCHShared.normalizeExportWordPreferences(stored[STORAGE_KEYS.exportWordPreferences]);
         applyCurrentDictionary();

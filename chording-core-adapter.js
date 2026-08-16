@@ -6,94 +6,168 @@
  * Loaded after chording-core.js (the IIFE bundle exposing
  * globalThis.ChordingCore) and before content.js.
  *
- * Differences from the original implementation, by design:
- * - Matching is exhaustive (all occurrences, overlaps included); the
- *   resolver picks a cost-minimal non-overlapping plan instead of
- *   coverage-maximization.
- * - Multi-word phrases are matchable (the original dropped them).
- * - Settings/layout gates run in permissive mode: this extension does not
- *   read the device settings/layout, so reachability/feasibility gating
- *   is skipped rather than guessed.
+ * Mode: gated only. The reachability (B7) and physical-feasibility (B8)
+ * gates plus settings-aware form/compound generation run against the
+ * device state captured by the options page full sync (chord library +
+ * settings + layout over the Serial API, SPEC-7). Without a device
+ * state there is NO fallback: matching is disabled rather than run
+ * permissively, so every match observed in testing reflects the real
+ * device configuration.
  */
 (function (global) {
   "use strict";
 
   const C = global.ChordingCore;
-  const adapter = { dictionaryVersion: 0, compiled: null, formIndex: null };
-
-  const PERMISSIVE_CTX = {
-    concatStyle: 0,
-    layoutCodes: [],
-    slotsPerLayer: 0,
-    chordOutputs: [],
-    settings: {},
+  const adapter = {
+    dictionaryVersion: 0,
+    compiled: null,
+    formSource: null,
+    suffixModifiers: [],
+    mode: "no-device-state",
+    reBindPending: false,
   };
 
-  adapter.sync = function (dictionary) {
-    const entries = Array.isArray(dictionary?.entries) ? dictionary.entries : [];
-    const coreEntries = [];
-    const sourceIndex = [];
-    const chordOutputs = [];
+  // SPEC-2 setting ids consumed by the verified decision core, read over
+  // VAR B1 per SPEC-7 (hex id): 49 chording enable, 62 concatenation
+  // style, 81 arpeggiates enable, 85 arpeggiates mode, 112 layer warp.
+  const GATE_SETTING_IDS = [49, 62, 81, 85, 112];
 
+  // Mirrors chordRender.corePhrase (string layer; not itself verified).
+  function corePhrase(output) {
+    let s = "";
+    for (const code of output) {
+      if (code >= 33 && code <= 126) s += String.fromCharCode(code);
+      else if (code === 32 || code === 544) s += " ";
+    }
+    return s;
+  }
+
+  function buildSuffixModifiers(chords, feasible) {
+    const mods = [];
+    for (const chord of chords) {
+      if (!feasible.has(chord.sourceIndex)) continue;
+      if (C.isModifierStyleOutput(chord.output) !== 1) continue;
+      // Affix classification matches the extension's deriveAffixType:
+      // output starting with JOIN (574) is a suffix modifier.
+      if (chord.output[0] !== 574) continue;
+      const text = corePhrase(chord.output);
+      if (!text) continue;
+      mods.push({ sourceIndex: chord.sourceIndex, text });
+    }
+    return mods;
+  }
+
+  adapter.sync = function (dictionary, deviceState) {
+    const entries = Array.isArray(dictionary?.entries) ? dictionary.entries : [];
+    const hasLayout = Boolean(
+      deviceState &&
+      Array.isArray(deviceState.layout) &&
+      deviceState.layout.length > 0 &&
+      deviceState.slotsPerLayer > 0
+    );
+
+    if (!hasLayout) {
+      // No fallback by design: without a device-synced layout + settings
+      // the reachability/feasibility gates cannot run, so matching is off.
+      adapter.compiled = null;
+      adapter.formSource = null;
+      adapter.suffixModifiers = [];
+      adapter.mode = "no-device-state";
+      adapter.dictionaryVersion += 1;
+      return;
+    }
+
+    const chords = [];
+    const chordOutputs = [];
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      const phrase = typeof e?.normalizedOutput === "string" ? e.normalizedOutput : "";
       const input = Array.isArray(e?.inputCodes) ? e.inputCodes : undefined;
       const output = Array.isArray(e?.outputCodes) ? e.outputCodes : [];
-      if (!phrase) continue;
       chordOutputs.push(output);
-      sourceIndex.push(i);
-      coreEntries.push({ phrase, notation: "", input });
+      chords.push({ input, output, notation: "", sourceIndex: i });
     }
 
-    const ctx = Object.assign({}, PERMISSIVE_CTX, { chordOutputs });
+    const ctx = {
+      concatStyle: Number(deviceState.settings?.[62]) === 1 ? 1 : 0,
+      layoutCodes: deviceState.layout,
+      slotsPerLayer: deviceState.slotsPerLayer,
+      chordOutputs,
+      settings: deviceState.settings || {},
+    };
 
-    // Form expansion (permissive: no gates without a bound model).
+    // Gated form generation: one call to the verified formsForChord per
+    // chord (reachability, F-gate, space/capitalize modes).
     const formEntries = [];
     const formSource = [];
-    for (let f = 0; f < coreEntries.length; f++) {
-      const e = coreEntries[f];
-      const base = { phrase: e.phrase, notation: e.notation, input: e.input };
-      formEntries.push(base);
-      formSource.push(sourceIndex[f]);
-      // trailing-space form (concatenation) — the original matched bare words only
-      formEntries.push({ phrase: e.phrase + " ", notation: e.notation, input: e.input });
-      formSource.push(sourceIndex[f]);
-    }
-    // Affix compounds (arpeggiate chords available in this dictionary).
-    for (let b = 0; b < coreEntries.length; b++) {
-      const base = coreEntries[b];
-      const baseText = base.phrase.replace(/\s+$/u, "");
-      for (let a = 0; a < coreEntries.length; a++) {
-        const arp = coreEntries[a];
-        if (!(Array.isArray(arp.input) && arp.input.includes(1001))) continue;
-        const punct = (arp.phrase || "").trim();
-        if (!punct) continue;
+    const feasible = new Set();
+    adapter.reBindPending = false;
+    for (const chord of chords) {
+      const result = C.formsForChord(chord.input, chord.output, ctx);
+      if (result.reBind) adapter.reBindPending = true; // GTM/impulse scope cut
+      if (result.forms.length > 0) feasible.add(chord.sourceIndex);
+      for (const form of result.forms) {
         formEntries.push({
-          phrase: baseText + punct,
-          notation: "",
-          input: base.input,
-          compoundInputs: arp.input,
-          variantInputs: { stateChange: 0, grammarAlt: arp.phrase.includes("\u0000") ? 1 : 0, hyperspaceAlt: 0 },
+          phrase: form.phrase,
+          notation: chord.notation,
+          input: chord.input,
+          variantInputs: form.variantInputs,
         });
-        formSource.push(sourceIndex[b]);
+        formSource.push(chord.sourceIndex);
+      }
+    }
+
+    // Affix compounding, canonical to chordRender.buildCompoundEntries but
+    // replicated here so each compound keeps its base-chord source index.
+    const enable = ctx.settings[81] ?? 1;
+    const mode85 = ctx.settings[85] ?? 0;
+    const base = chords.filter((c) => C.isArpeggiateChordInput(c.input ?? []) === 0);
+    const arps = chords.filter((c) => C.isArpeggiateChordInput(c.input ?? []) === 1);
+    const mods = chords.filter(
+      (c) => C.isArpeggiateChordInput(c.input ?? []) === 0 && C.isModifierStyleOutput(c.output) === 1
+    );
+
+    if (C.arpeggiateActive(enable, mode85, 2) === 1) {
+      for (const b of base) {
+        const bt = corePhrase(b.output);
+        if (!bt) continue;
+        for (const a of arps) {
+          const at = corePhrase(a.output);
+          if (!at) continue;
+          formEntries.push({
+            phrase: bt + at,
+            notation: "",
+            input: b.input,
+            compoundInputs: a.input,
+            variantInputs: { stateChange: 0, grammarAlt: a.output.includes(573) ? 1 : 0, hyperspaceAlt: 0 },
+          });
+          formSource.push(b.sourceIndex);
+        }
+      }
+    }
+
+    if (C.arpeggiateActive(enable, mode85, 1) === 1) {
+      for (const b of base) {
+        const bt = corePhrase(b.output);
+        if (!bt) continue;
+        for (const m of mods) {
+          const mt = corePhrase(m.output);
+          if (!mt) continue;
+          formEntries.push({
+            phrase: bt + mt,
+            notation: "",
+            input: b.input,
+            compoundInputs: m.input,
+            variantInputs: { stateChange: 0, grammarAlt: 0, hyperspaceAlt: 0 },
+          });
+          formSource.push(b.sourceIndex);
+        }
       }
     }
 
     adapter.compiled = C.compileChordDictionary(formEntries);
     adapter.formSource = formSource;
-    adapter.suffixModifiers = [];
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i];
-      const out = Array.isArray(e?.outputCodes) ? e.outputCodes : [];
-      const text = typeof e?.normalizedOutput === "string" ? e.normalizedOutput : "";
-      // affix classification matches the extension's deriveAffixType:
-      // output starting with JOIN (574) and not ending with KSC_00 (256)
-      // is a suffix modifier.
-      if (out[0] === 574 && out[out.length - 1] !== 256 && text) {
-        adapter.suffixModifiers.push({ sourceIndex: i, text });
-      }
-    }
+    adapter.suffixModifiers = buildSuffixModifiers(chords, feasible);
+    adapter.mode = "gated";
     adapter.dictionaryVersion += 1;
   };
 
@@ -102,11 +176,15 @@
     const minLen = Number(opts?.minimumWordLength ?? 0) || 0;
     if (normalizedWord.length < minLen) return null;
 
-    const result = C.matchChordable(normalizedWord, adapter.compiled);
+    // Canonical space forms ("great " trailing / " great" leading) require
+    // the adjacent concatenator, which is not part of the word itself.
+    // Match against the word padded with one space on each side and map
+    // anchors back into word coordinates.
+    const padded = " " + normalizedWord + " ";
+    const result = C.matchChordable(padded, adapter.compiled);
     if (result.candidates.length === 0) return null;
 
     const plan = C.resolveChordable(result, adapter.compiled, {
-      baseChordCost: 1,
       charCost: 1,
       switchCost: 0.25,
       widthCostPerExtraKey: 0.15,
@@ -119,6 +197,14 @@
       variantGrammarCost: 0.4,
       variantHyperspaceCost: 0.1,
     });
+
+    // Map resolver choices from padded-text coordinates back to word
+    // coordinates; drop choices that only covered the padding.
+    for (const choice of plan.choices) {
+      choice.start = Math.max(0, choice.start - 1);
+      choice.end = Math.min(normalizedWord.length, choice.end - 1);
+    }
+    plan.choices = plan.choices.filter((choice) => choice.end > choice.start);
 
     // Modifier spans already claimed by a suffix-modifier label suppress the
     // plain chord choice at the same span (no duplicate hints).
@@ -152,9 +238,9 @@
         });
       }
 
-      // Suffix modifier chords (outputs starting with JOIN 574) shown with
-      // the hint: if the text right after the matched chord starts with a
-      // modifier's output, append a modifier label for it.
+      // Suffix modifier chords shown with the hint: if the text right
+      // after the matched chord starts with a modifier's output, append a
+      // modifier label for it.
       for (const mod of adapter.suffixModifiers) {
         const modText = String(mod.text || "");
         if (!modText) continue;

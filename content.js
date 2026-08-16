@@ -19,12 +19,14 @@
     const STORAGE_KEYS = {
         parsedDictionary: "parsedDictionary",
         inputDisplayOverrides: "inputDisplayOverrides",
-        settings: "settings"
+        settings: "settings",
+        deviceState: "deviceState"
     };
 
     const STATE = {
         dictionary: null,
         settings: CCHShared.defaultSettings(),
+        deviceState: null,
         containerObserver: null,
         promptObserver: null,
         observedPromptContainer: null,
@@ -540,7 +542,6 @@
 
         merged.enableSubstringHints = Boolean(merged.enableSubstringHints);
         merged.enableNaiveModifierHints = Boolean(merged.enableNaiveModifierHints);
-        merged.suppressAffixMatchingInMiddleOfWords = Boolean(merged.suppressAffixMatchingInMiddleOfWords);
         merged.minimumWordLength = CCHShared.normalizeMinimumWordLength
             ? CCHShared.normalizeMinimumWordLength(merged.minimumWordLength)
             : Math.max(1, Math.floor(Number(merged.minimumWordLength)) || 3);
@@ -1639,7 +1640,7 @@
         );
         STATE.exactWordLookup = buildExactWordLookup();
         if (typeof ChordingCoreAdapter !== "undefined") {
-            ChordingCoreAdapter.sync(STATE.dictionary);
+            ChordingCoreAdapter.sync(STATE.dictionary, STATE.deviceState);
         }
         STATE.exactEntrySelectionCache = new Map();
     }
@@ -1733,7 +1734,8 @@
             if (adapterResult && adapterResult.matched) {
                 return adapterResult;
             }
-            return { matched: false, reason: "no-substring-match", word: rawText, normalized: normalizedWord };
+            const reason = ChordingCoreAdapter.compiled ? "no-substring-match" : "no-device-state";
+            return { matched: false, reason, word: rawText, normalized: normalizedWord };
         }
 
         return { matched: false, reason: "adapter-unavailable", word: rawText, normalized: normalizedWord };
@@ -3646,12 +3648,14 @@
         const stored = await getStorage([
             STORAGE_KEYS.parsedDictionary,
             STORAGE_KEYS.inputDisplayOverrides,
-            STORAGE_KEYS.settings
+            STORAGE_KEYS.settings,
+            STORAGE_KEYS.deviceState
         ]);
         STATE.dictionary = CCHShared.applyInputDisplayOverrides(
             stored[STORAGE_KEYS.parsedDictionary],
             stored[STORAGE_KEYS.inputDisplayOverrides]
         );
+        STATE.deviceState = stored[STORAGE_KEYS.deviceState] || null;
         refreshLookupMetadata();
         STATE.settings = hydrateSettings(stored[STORAGE_KEYS.settings]);
         applyAppearanceSettings();
@@ -3851,17 +3855,19 @@
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "local") return;
 
-        if (changes[STORAGE_KEYS.parsedDictionary] || changes[STORAGE_KEYS.inputDisplayOverrides]) {
-            const keysToReload = [STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides];
+        if (changes[STORAGE_KEYS.parsedDictionary] || changes[STORAGE_KEYS.inputDisplayOverrides] || changes[STORAGE_KEYS.deviceState]) {
+            const keysToReload = [STORAGE_KEYS.parsedDictionary, STORAGE_KEYS.inputDisplayOverrides, STORAGE_KEYS.deviceState];
             chrome.storage.local.get(keysToReload, (stored) => {
                 STATE.dictionary = CCHShared.applyInputDisplayOverrides(
                     stored[STORAGE_KEYS.parsedDictionary],
                     stored[STORAGE_KEYS.inputDisplayOverrides]
                 );
+                STATE.deviceState = stored[STORAGE_KEYS.deviceState] || null;
                 refreshLookupMetadata();
                 resetHintLabelTemplateCache("dictionary-change");
                 log("Dictionary changed", {
-                    entryCount: STATE.dictionary?.entryCount ?? 0
+                    entryCount: STATE.dictionary?.entryCount ?? 0,
+                    hasDeviceState: Boolean(STATE.deviceState)
                 });
                 scheduleAnnotation(true);
             });
