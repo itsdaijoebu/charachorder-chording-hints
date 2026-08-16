@@ -2435,6 +2435,10 @@
     }
 
     function outlineViewportRectForRecord(record) {
+        if (record?.mergedSpan) {
+            const rows = mergedMultiWordOutlineRects(record.mergedSpan, 0, record.mergedSpan.length);
+            return rows[record.mergedRowIndex ?? 0] || null;
+        }
         if (!record?.word) {
             return null;
         }
@@ -2443,12 +2447,67 @@
         return rects[record.rectIndex ?? 0] || null;
     }
 
+    function mergedMultiWordOutlineRects(words, startIndex, count) {
+        // One rect per visual row for a multi-word span: adjacent word
+        // rects on the same line merge into a single box so a phrase match
+        // does not render as split segments with overlapping padding.
+        const span = (Array.isArray(words) ? words : []).slice(startIndex, startIndex + Number(count || 0));
+        const wordRects = span
+            .map((word) => wordRecordRect(word, hasActiveAnnotationMeasurementCache()))
+            .filter((rect) => rect && rect.width > 0 && rect.height > 0);
+        if (!wordRects.length) {
+            return [];
+        }
+
+        const rows = [];
+        for (const rect of wordRects) {
+            const row = rows[rows.length - 1];
+            if (row && Math.abs(rect.top - row.top) < Math.max(rect.height, row.height) * 0.5) {
+                row.left = Math.min(row.left, rect.left);
+                row.right = Math.max(row.right, rect.right);
+                row.top = Math.min(row.top, rect.top);
+                row.bottom = Math.max(row.bottom, rect.bottom);
+                row.width = row.right - row.left;
+                row.height = row.bottom - row.top;
+            } else {
+                rows.push({
+                    left: rect.left,
+                    right: rect.right,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    width: rect.width,
+                    height: rect.height
+                });
+            }
+        }
+
+        return rows;
+    }
+
+    function mergedMultiWordOutlineRecords(words, startIndex, match) {
+        const span = (Array.isArray(words) ? words : [])
+            .slice(startIndex, startIndex + Number(match?.wordCount || 1));
+        return mergedMultiWordOutlineRects(words, startIndex, span.length)
+            .map((_, mergedRowIndex) => ({
+                word: span[0],
+                match: null,
+                labelMatch: null,
+                rectIndex: 0,
+                mergedSpan: span,
+                mergedRowIndex
+            }));
+    }
+
     function appendInlineOutlines(words, startIndex, match, labelMatch) {
         if (!STATE.settings.showChordableWordOutlines) {
             return;
         }
 
-        outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
+        const isMultiWordSpan = Number(match?.wordCount) > 1 && labelMatch?.anchor?.type !== "substring";
+        const records = isMultiWordSpan
+            ? mergedMultiWordOutlineRecords(words, startIndex, match)
+            : outlineRecordsForMatch(words, startIndex, match, labelMatch);
+        records.forEach((record) => {
             const rect = outlineViewportRectForRecord(record);
             const hostEl = entertrainedInlineOutlinePlacement(record) || wordRecordElement(record.word);
             const hostRect = hostEl instanceof HTMLElement
@@ -2478,7 +2537,11 @@
             return;
         }
 
-        outlineRecordsForMatch(words, startIndex, match, labelMatch).forEach((record) => {
+        const isMultiWordSpan = Number(match?.wordCount) > 1 && labelMatch?.anchor?.type !== "substring";
+        const records = isMultiWordSpan
+            ? mergedMultiWordOutlineRecords(words, startIndex, match)
+            : outlineRecordsForMatch(words, startIndex, match, labelMatch);
+        records.forEach((record) => {
             const outline = createOutlineElement();
             const nextRecord = {
                 ...record,
