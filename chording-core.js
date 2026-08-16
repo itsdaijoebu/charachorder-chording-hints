@@ -212,7 +212,8 @@
           phrase: entry.phrase,
           notation: entry.notation,
           start: pos - entry.phrase.length + 1,
-          end: pos + 1
+          end: pos + 1,
+          deletesPrevious: entry.deletesPrevious ?? 0
         });
       }
     }
@@ -238,19 +239,23 @@
     singleLayerExists: () => singleLayerExists,
     settingEffect: () => settingEffect,
     reachable: () => reachable,
+    outputDeletesPrevious: () => outputDeletesPrevious,
     modeEffect: () => modeEffect,
+    minKeysFeasible: () => minKeysFeasible,
     layersReferenced: () => layersReferenced,
     layerReferencedByInput: () => layerReferencedByInput,
     layerKeyTargetLayer: () => layerKeyTargetLayer,
     layerHoldFeasible: () => layerHoldFeasible,
     layerAfter: () => layerAfter,
     keyInInput: () => keyInInput,
+    isTapDanceChordInput: () => isTapDanceChordInput,
     isModifierStyleOutput: () => isModifierStyleOutput,
     isArpeggiateChordInput: () => isArpeggiateChordInput,
     inputOkInLayer: () => inputOkInLayer,
     inputCodesBound: () => inputCodesBound,
     hasLayerKeyInput: () => hasLayerKeyInput,
     feasibilityClass: () => feasibilityClass,
+    effectiveInputCode: () => effectiveInputCode,
     codeOkInLayer: () => codeOkInLayer,
     codeInLayer: () => codeInLayer,
     codeInArray: () => codeInArray,
@@ -259,6 +264,7 @@
     capitalizeMode: () => capitalizeMode,
     arpeggiateActive: () => arpeggiateActive,
     allNonLayerKeysInLayer: () => allNonLayerKeysInLayer,
+    admissibleStart: () => admissibleStart,
     actionTextClass: () => actionTextClass
   });
   function actionTextClass(code) {
@@ -503,7 +509,7 @@
     let bound = 1;
     let i = 0;
     while (i < input.length) {
-      if (input[i] !== 0 && (input[i] < 600 || input[i] > 617)) {
+      if (input[i] !== 0 && (input[i] < 600 || input[i] > 617) && input[i] !== 1001 && input[i] !== 1002) {
         if (codeInAnyLayer(input[i], layout, slotsPerLayer) === 0 && bound === 1) {
           bound = 0;
         }
@@ -570,6 +576,51 @@
     }
     return found;
   }
+  function outputDeletesPrevious(output) {
+    let found = 0;
+    let i = 0;
+    while (i < output.length) {
+      if ((output[i] === 575 || output[i] === 576 || output[i] === 537) && found === 0) {
+        found = 1;
+      }
+      i = i + 1;
+    }
+    return found;
+  }
+  function isTapDanceChordInput(input) {
+    let found = 0;
+    let i = 0;
+    while (i < input.length) {
+      if (input[i] === 1002 && found === 0) {
+        found = 1;
+      }
+      i = i + 1;
+    }
+    return found;
+  }
+  function effectiveInputCode(input, i) {
+    if (input[i] === 533 || input[i] === 535 || input[i] === 536) {
+      if (i > 0) {
+        return input[i - 1];
+      }
+      return 0;
+    }
+    return input[i];
+  }
+  function minKeysFeasible(keyCount, minChordKeys, hasMarker) {
+    if (hasMarker === 1)
+      return 1;
+    if (keyCount < minChordKeys)
+      return 0;
+    return 1;
+  }
+  function admissibleStart(atStart, prevIsHyperspace, autocorrectOn, deletesPrevious) {
+    if (atStart === 1 || prevIsHyperspace === 1)
+      return 1;
+    if (autocorrectOn === 1 || deletesPrevious === 1)
+      return 0;
+    return 1;
+  }
 
   // src/chordResolver.ts
   var DEFAULT_RESOLUTION_CONFIG = {
@@ -606,7 +657,16 @@
   function resolveChordable(result, dict, config = {}) {
     const cfg = { ...DEFAULT_RESOLUTION_CONFIG, ...config };
     const { text } = result;
-    const candidates = [...result.candidates].sort((a, b) => a.start - b.start || b.end - a.end);
+    let candidates = [...result.candidates].sort((a, b) => a.start - b.start || b.end - a.end);
+    const hyperspace = cfg.hyperspaceChar && cfg.hyperspaceChar.length > 0 ? cfg.hyperspaceChar[0] : " ";
+    candidates = candidates.filter((c) => {
+      let s = c.start;
+      while (s < c.end && text[s] === hyperspace)
+        s += 1;
+      const atStart = s === 0 ? 1 : 0;
+      const prevIsHyperspace = s > 0 && text[s - 1] === hyperspace ? 1 : 0;
+      return admissibleStart(atStart, prevIsHyperspace, cfg.autocorrectOn ?? 0, c.deletesPrevious ?? 0) === 1;
+    });
     const n = candidates.length;
     if (n === 0) {
       return {
@@ -711,10 +771,18 @@
   __export(exports_chordRender, {
     isReachable: () => isReachable,
     formsForChord: () => formsForChord,
+    expandDupInput: () => expandDupInput,
     capturedConcatenator: () => capturedConcatenator,
     buildFormEntries: () => buildFormEntries,
     buildCompoundEntries: () => buildCompoundEntries
   });
+  function expandDupInput(input) {
+    const out = [];
+    for (let i = 0;i < input.length; i += 1) {
+      out.push(effectiveInputCode(input, i));
+    }
+    return out;
+  }
   function isReachable(code, ctx) {
     if (codeInArray(code, ctx.layoutCodes) === 1)
       return true;
@@ -799,7 +867,12 @@
     const chordingEnabled = ctx.settings[49] ?? 1;
     if (chordingEnabled === 0)
       return { forms: [], reBind: false };
-    const inCodes = input ?? [];
+    const inCodes = expandDupInput(input ?? []);
+    const hasMarker = isArpeggiateChordInput(inCodes) === 1 || isTapDanceChordInput(inCodes) === 1 ? 1 : 0;
+    const minKeys = ctx.settings[56] ?? 2;
+    if (input !== undefined && minKeysFeasible(inputWidth(inCodes), minKeys, hasMarker) === 0) {
+      return { forms: [], reBind: false };
+    }
     const r = layersReferenced(inCodes, ctx.layoutCodes, ctx.slotsPerLayer);
     const K = hasLayerKeyInput(inCodes);
     const warpOn = ctx.settings[112] ?? 0;
@@ -816,7 +889,7 @@
     const warpSpan = fclass === 3 ? 1 : 0;
     const space = spaceModeGated(ctx.concatStyle, hasHyperspace, inhibit, captureReachable);
     const cap = capitalizeModeGated(hasCapitalize, shiftReachable, 0, shiftReachable);
-    const stateChange = inputStateChange(input) === 1 || outStateChange === 1 || settingChange === 1 || warpSpan === 1 ? 1 : 0;
+    const stateChange = inputStateChange(inCodes) === 1 || outStateChange === 1 || settingChange === 1 || warpSpan === 1 ? 1 : 0;
     const grammarAlt = cap === 1 ? 1 : 0;
     const baseInputs = { stateChange, grammarAlt, hyperspaceAlt: 0 };
     const forms = [];
@@ -853,7 +926,13 @@
       if (r.reBind)
         reBind = true;
       for (const f of r.forms) {
-        entries.push({ phrase: f.phrase, notation: c.notation, input: c.input, variantInputs: f.variantInputs });
+        entries.push({
+          phrase: f.phrase,
+          notation: c.notation,
+          input: expandDupInput(c.input ?? []),
+          variantInputs: f.variantInputs,
+          deletesPrevious: outputDeletesPrevious(c.output)
+        });
       }
     }
     return { entries, reBind };
@@ -878,9 +957,10 @@
           entries.push({
             phrase: bt + at,
             notation: `${b.notation}+${a.notation}`,
-            input: b.input,
-            compoundInputs: a.input,
-            variantInputs: { stateChange: 0, grammarAlt: cap, hyperspaceAlt: 0 }
+            input: expandDupInput(b.input ?? []),
+            compoundInputs: expandDupInput(a.input ?? []),
+            variantInputs: { stateChange: 0, grammarAlt: cap, hyperspaceAlt: 0 },
+            deletesPrevious: outputDeletesPrevious(b.output) === 1 || outputDeletesPrevious(a.output) === 1 ? 1 : 0
           });
         }
       }
@@ -897,9 +977,10 @@
           entries.push({
             phrase: bt + mt,
             notation: `${b.notation}+${m.notation}`,
-            input: b.input,
-            compoundInputs: m.input,
-            variantInputs: { stateChange: 0, grammarAlt: 0, hyperspaceAlt: 0 }
+            input: expandDupInput(b.input ?? []),
+            compoundInputs: expandDupInput(m.input ?? []),
+            variantInputs: { stateChange: 0, grammarAlt: 0, hyperspaceAlt: 0 },
+            deletesPrevious: outputDeletesPrevious(b.output) === 1 || outputDeletesPrevious(m.output) === 1 ? 1 : 0
           });
         }
       }
