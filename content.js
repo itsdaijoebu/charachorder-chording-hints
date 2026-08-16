@@ -40,8 +40,7 @@
         overlayOutlines: [],
         overlayRepositionFrame: null,
         overlayResizeObserver: null,
-        substringLookup: null,
-        substringMatchCache: new Map(),
+        exactWordLookup: null,
         exactEntrySelectionCache: new Map(),
         hintLabelTemplateCache: new Map(),
         hintLabelClickDelegationInstalled: false,
@@ -1120,33 +1119,6 @@
             .sort(compareNaiveModifierResolutions);
     }
 
-    function naiveModifierLabelsForSubstringMatch(normalizedWord, baseEnd) {
-        if (!STATE.settings.enableNaiveModifierHints) {
-            return { labels: [], coverageEnd: baseEnd };
-        }
-
-        const safeNormalizedWord = String(normalizedWord || "");
-        const safeBaseEnd = Math.max(0, Math.min(safeNormalizedWord.length, Number(baseEnd) || 0));
-        const trailingText = safeNormalizedWord.slice(safeBaseEnd);
-        if (!trailingText) {
-            return { labels: [], coverageEnd: safeBaseEnd };
-        }
-
-        const chains = collectModifierChainsFromTrailingText(
-            trailingText,
-            safeNormalizedWord.slice(0, safeBaseEnd).endsWith("e")
-        ).filter((chain) => chain.length);
-        if (!chains.length) {
-            return { labels: [], coverageEnd: safeBaseEnd };
-        }
-
-        const bestChain = chains.slice().sort(compareModifierChains)[0];
-        return {
-            labels: modifierLabelsFromChain(bestChain, safeBaseEnd, safeNormalizedWord.length),
-            coverageEnd: safeNormalizedWord.length
-        };
-    }
-
     function exactLookupCandidatesForText(rawText, strictNormalized = null, allowAnchor = false) {
         const candidates = [];
         const safeStrictNormalized = typeof strictNormalized === "string"
@@ -1665,8 +1637,7 @@
             1,
             ...normalizedOutputs.map((key) => String(key).split(/\s+/u).filter(Boolean).length)
         );
-        STATE.substringLookup = buildSubstringLookup();
-        STATE.substringMatchCache = new Map();
+        STATE.exactWordLookup = buildExactWordLookup();
         if (typeof ChordingCoreAdapter !== "undefined") {
             ChordingCoreAdapter.sync(STATE.dictionary);
         }
@@ -1717,171 +1688,25 @@
         return parts.every((part) => Array.from(part).length >= requiredLength);
     }
 
-    function buildSubstringLookup() {
+    function buildExactWordLookup() {
+        // chording-core cleanup: substring matching lives entirely in
+        // ChordingCoreAdapter; only the exact-word set remains (used by the
+        // exact-word-exists guard in findSubstringMatchForWord).
         const dictionary = STATE.dictionary;
         if (!dictionary?.byNormalizedOutput) {
-            return {
-                byFirstCharacter: new Map(),
-                exactSingleWordMatches: new Set()
-            };
+            return { exactSingleWordMatches: new Set() };
         }
 
-        const byFirstCharacter = new Map();
         const exactSingleWordMatches = new Set();
-
-        Object.entries(dictionary.byNormalizedOutput).forEach(([normalized, refs]) => {
+        Object.entries(dictionary.byNormalizedOutput).forEach(([normalized]) => {
             const safeNormalized = String(normalized || "");
             if (!safeNormalized || /\s/u.test(safeNormalized)) {
                 return;
             }
-
             exactSingleWordMatches.add(safeNormalized);
-
-            const refsByAffix = {
-                any: [],
-                prefix: [],
-                suffix: []
-            };
-
-            refs.forEach((ref) => {
-                const entry = dictionary.entries?.[ref];
-                const affixType = entry?.flags?.affixType || "any";
-                if (affixType === "prefix") {
-                    refsByAffix.prefix.push(ref);
-                } else if (affixType === "suffix") {
-                    refsByAffix.suffix.push(ref);
-                } else {
-                    refsByAffix.any.push(ref);
-                }
-            });
-
-            const firstCharacter = safeNormalized[0];
-            if (!firstCharacter) {
-                return;
-            }
-
-            const bucket = byFirstCharacter.get(firstCharacter) || [];
-            bucket.push({
-                normalized: safeNormalized,
-                length: safeNormalized.length,
-                refsByAffix
-            });
-            byFirstCharacter.set(firstCharacter, bucket);
         });
 
-        byFirstCharacter.forEach((bucket) => {
-            bucket.sort((a, b) => {
-                if (b.length !== a.length) return b.length - a.length;
-                return a.normalized.localeCompare(b.normalized);
-            });
-        });
-
-        return { byFirstCharacter, exactSingleWordMatches };
-    }
-
-    function substringCacheKey(normalizedWord) {
-        return JSON.stringify({
-            normalizedWord,
-            minimumWordLength: minimumWordLength(),
-            selectionMode: STATE.settings.selectionMode,
-            includeArpeggiates: Boolean(STATE.settings.includeArpeggiates),
-            includeModifierStyle: Boolean(STATE.settings.includeModifierStyle),
-            enableNaiveModifierHints: Boolean(STATE.settings.enableNaiveModifierHints)
-        });
-    }
-
-    function isAlphanumericBoundaryCharacter(char) {
-        return /[\p{L}\p{N}]/u.test(String(char || ""));
-    }
-
-    function isBoundaryStart(text, index) {
-        if (index <= 0) {
-            return true;
-        }
-
-        return !isAlphanumericBoundaryCharacter(text[index - 1]);
-    }
-
-    function isBoundaryEnd(text, index) {
-        if (index >= text.length) {
-            return true;
-        }
-
-        return !isAlphanumericBoundaryCharacter(text[index]);
-    }
-
-    function applicableSubstringRefs(candidate, startIndex, endIndex, text) {
-        const refs = [];
-        const suppressMidWordAffixMatching = Boolean(STATE.settings.suppressAffixMatchingInMiddleOfWords);
-        if (candidate.refsByAffix?.any?.length) {
-            refs.push(...candidate.refsByAffix.any);
-        }
-        if (!suppressMidWordAffixMatching && candidate.refsByAffix?.prefix?.length) {
-            refs.push(...candidate.refsByAffix.prefix);
-        } else if (isBoundaryStart(text, startIndex) && candidate.refsByAffix?.prefix?.length) {
-            refs.push(...candidate.refsByAffix.prefix);
-        }
-        if (!suppressMidWordAffixMatching && candidate.refsByAffix?.suffix?.length) {
-            refs.push(...candidate.refsByAffix.suffix);
-        } else if (isBoundaryEnd(text, endIndex) && candidate.refsByAffix?.suffix?.length) {
-            refs.push(...candidate.refsByAffix.suffix);
-        }
-        return refs;
-    }
-
-    function compareSubstringSolutions(a, b) {
-        if (a.coverage !== b.coverage) return a.coverage - b.coverage;
-        if (a.longestSegment !== b.longestSegment) return a.longestSegment - b.longestSegment;
-        if (a.segmentCount !== b.segmentCount) return b.segmentCount - a.segmentCount;
-        return b.firstStart - a.firstStart;
-    }
-
-    function solveBestSubstringCoverage(candidates) {
-        const sortedCandidates = candidates.slice().sort((a, b) => {
-            if (a.start !== b.start) return a.start - b.start;
-            if (b.length !== a.length) return b.length - a.length;
-            return a.normalized.localeCompare(b.normalized);
-        });
-
-        const memo = new Map();
-
-        function solve(index) {
-            if (index >= sortedCandidates.length) {
-                return {
-                    coverage: 0,
-                    longestSegment: 0,
-                    segmentCount: 0,
-                    firstStart: Number.POSITIVE_INFINITY,
-                    segments: []
-                };
-            }
-
-            if (memo.has(index)) {
-                return memo.get(index);
-            }
-
-            const skip = solve(index + 1);
-            const candidate = sortedCandidates[index];
-            let nextIndex = index + 1;
-            while (nextIndex < sortedCandidates.length && sortedCandidates[nextIndex].start < candidate.end) {
-                nextIndex += 1;
-            }
-
-            const includeTail = solve(nextIndex);
-            const include = {
-                coverage: candidate.length + includeTail.coverage,
-                longestSegment: Math.max(candidate.length, includeTail.longestSegment),
-                segmentCount: 1 + includeTail.segmentCount,
-                firstStart: candidate.start,
-                segments: [candidate, ...includeTail.segments]
-            };
-
-            const best = compareSubstringSolutions(include, skip) >= 0 ? include : skip;
-            memo.set(index, best);
-            return best;
-        }
-
-        return solve(0).segments;
+        return { exactSingleWordMatches };
     }
 
     function findSubstringMatchForWord(rawText, normalizedWord) {
@@ -1895,12 +1720,12 @@
 
         const requiredLength = minimumWordLength();
 
-        if (STATE.substringLookup?.exactSingleWordMatches?.has(normalizedWord)) {
+        if (STATE.exactWordLookup?.exactSingleWordMatches?.has(normalizedWord)) {
             return { matched: false, reason: "exact-word-exists", word: rawText, normalized: normalizedWord };
         }
 
-        // chording-core integration: exhaustive Aho-Corasick matching +
-        // cost-model resolution replaces the coverage DP below.
+        // chording-core: substring matching is entirely delegated to the
+        // adapter (exhaustive Aho-Corasick + cost-model resolution).
         if (typeof ChordingCoreAdapter !== "undefined") {
             const adapterResult = ChordingCoreAdapter.matchWord(rawText, normalizedWord, {
                 minimumWordLength: requiredLength
@@ -1908,103 +1733,10 @@
             if (adapterResult && adapterResult.matched) {
                 return adapterResult;
             }
-        }
-
-        const cacheKey = substringCacheKey(normalizedWord);
-        if (STATE.substringMatchCache.has(cacheKey)) {
-            const cached = STATE.substringMatchCache.get(cacheKey);
-            return cached
-                ? {
-                    matched: true,
-                    word: rawText,
-                    normalized: normalizedWord,
-                    labels: cached,
-                    wordCount: 1,
-                    isSubstringMatch: true
-                }
-                : { matched: false, reason: "no-substring-match", word: rawText, normalized: normalizedWord };
-        }
-
-        const seenCandidates = new Set();
-        const candidatePool = [];
-        for (const character of new Set(Array.from(normalizedWord))) {
-            const bucket = STATE.substringLookup?.byFirstCharacter?.get(character) || [];
-            for (const candidate of bucket) {
-                if (candidate.length >= normalizedWord.length) {
-                    continue;
-                }
-                if (seenCandidates.has(candidate.normalized)) {
-                    continue;
-                }
-                seenCandidates.add(candidate.normalized);
-                candidatePool.push(candidate);
-            }
-        }
-
-        const segments = [];
-        for (const candidate of candidatePool) {
-            if (candidate.length < requiredLength) {
-                continue;
-            }
-
-            let searchIndex = 0;
-            while (searchIndex < normalizedWord.length) {
-                const matchIndex = normalizedWord.indexOf(candidate.normalized, searchIndex);
-                if (matchIndex === -1) {
-                    break;
-                }
-
-                const endIndex = matchIndex + candidate.normalized.length;
-                const refs = applicableSubstringRefs(candidate, matchIndex, endIndex, normalizedWord);
-                if (refs.length) {
-                    const chosen = CCHShared.chooseEntries(STATE.dictionary, refs, STATE.settings);
-                    if (chosen.length) {
-                        const modifierSuffixResult = naiveModifierLabelsForSubstringMatch(normalizedWord, endIndex);
-                        segments.push({
-                            start: matchIndex,
-                            end: modifierSuffixResult.coverageEnd,
-                            length: modifierSuffixResult.coverageEnd - matchIndex,
-                            normalized: candidate.normalized,
-                            entries: chosen,
-                            baseStart: matchIndex,
-                            baseEnd: endIndex,
-                            modifierLabels: modifierSuffixResult.labels
-                        });
-                    }
-                }
-
-                searchIndex = matchIndex + 1;
-            }
-        }
-
-        const bestSegments = solveBestSubstringCoverage(segments).flatMap((segment) => ([
-            {
-                entries: segment.entries,
-                normalized: segment.normalized,
-                anchor: {
-                    type: "substring",
-                    start: segment.baseStart,
-                    end: segment.baseEnd,
-                    wordLength: normalizedWord.length
-                }
-            },
-            ...(Array.isArray(segment.modifierLabels) ? segment.modifierLabels : [])
-        ]));
-
-        STATE.substringMatchCache.set(cacheKey, bestSegments.length ? bestSegments : null);
-
-        if (!bestSegments.length) {
             return { matched: false, reason: "no-substring-match", word: rawText, normalized: normalizedWord };
         }
 
-        return {
-            matched: true,
-            word: rawText,
-            normalized: normalizedWord,
-            labels: bestSegments,
-            wordCount: 1,
-            isSubstringMatch: true
-        };
+        return { matched: false, reason: "adapter-unavailable", word: rawText, normalized: normalizedWord };
     }
 
     function findMatchFromWords(words, startIndex) {
